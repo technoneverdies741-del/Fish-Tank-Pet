@@ -85,6 +85,13 @@ $startPongGame = {
   $origin=$tank.PointToScreen([System.Drawing.Point]::Empty);$px=[int]($origin.X+$ballX);$py=[int]($origin.Y+$ballY)
   [FishTankNative]::SetCursorPos($px,$py)|Out-Null;$state.LastCursor=New-Object System.Drawing.Point($px,$py);$state.CursorStillSince=[datetime]::UtcNow
 }
+$togglePong = {
+  if($state.PongActive){
+    $state.PongActive=$false;$state.PongMode=$false;$state.PongOnly=$false
+    $state.LastCursor=[System.Windows.Forms.Cursor]::Position;$state.CursorStillSince=[datetime]::UtcNow
+  }else{& $startPongGame}
+  $tank.Invalidate()
+}
 $typingKeys=@(8,9,13,32)+@(48..90)+@(96..111)+@(186..192)+@(219..222)
 $startCursorSteal = {
   if(-not $state.Stealing){
@@ -167,7 +174,7 @@ foreach($count in 1..4){
     $tank.Invalidate()
   })
 }
-$playPongItem=New-Object System.Windows.Forms.ToolStripMenuItem('Play cursor pong now (Insert; uses 2 fish)')
+$playPongItem=New-Object System.Windows.Forms.ToolStripMenuItem('Toggle cursor pong (Insert; uses 2 fish)')
 $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem('Quit Fish Tank')
 [void]$menu.Items.Add($awakeItem); [void]$menu.Items.Add($followItem); [void]$menu.Items.Add($clickItem); [void]$menu.Items.Add($tiltItem); [void]$menu.Items.Add($ambienceItem); [void]$menu.Items.Add($typingGrabItem); [void]$menu.Items.Add($mischiefItem); [void]$menu.Items.Add($chanceMenu); [void]$menu.Items.Add($fishCountMenu); [void]$menu.Items.Add($playPongItem)
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)); [void]$menu.Items.Add($exitItem)
@@ -191,9 +198,9 @@ $typingGrabItem.Add_Click({
   }
 })
 $playPongItem.Add_Click({
-  # The one-click game uses the real cursor as a puck and leaves it where the last body hit sends it.
+  # The tray control and Insert key both toggle the cursor-pong game.
   if($state.TypingSteal){$state.TypingSteal=$false;if($state.TypingForcedFollow){$state.TypingForcedFollow=$false;$followItem.PerformClick()}}
-  & $startPongGame
+  & $togglePong
 })
 $mischiefItem.Add_Click({$mischiefItem.Checked=-not $mischiefItem.Checked;$state.StealEnabled=$mischiefItem.Checked})
 $clickItem.Add_Click({
@@ -395,7 +402,7 @@ $timer.Add_Tick({
   if($endDown -and -not $state.EndWasDown -and -not $state.PongActive){& $startCursorSteal}
   $state.EndWasDown=$endDown
   $insertDown=(([FishTankNative]::GetAsyncKeyState(0x2D) -band 0x8000) -ne 0)
-  if($insertDown -and -not $state.InsertWasDown -and -not $state.PongActive){& $startPongGame}
+  if($insertDown -and -not $state.InsertWasDown){& $togglePong}
   $state.InsertWasDown=$insertDown
   $deleteDown=(([FishTankNative]::GetAsyncKeyState(0x2E) -band 0x8000) -ne 0)
   if($deleteDown -and -not $state.DeleteWasDown -and ($state.Stealing -or $state.PongActive)){
@@ -437,7 +444,7 @@ $timer.Add_Tick({
       if($i -eq $state.PongLastHitIndex){continue}
       $f=$fishies[$i];$paddleX=if($i -eq 0){$leftCenter}else{$rightCenter};$bodyX=$nextX-($f.X+43);$bodyY=$nextY-($f.Y+14)
       if([Math]::Abs($nextX-$paddleX) -le 8 -and [Math]::Abs($bodyY) -le 21){
-        $verticalOffset=[Math]::Max(-1.0,[Math]::Min(1.0,$bodyY/21.0));$slope=$verticalOffset*0.8+($rng.NextDouble()-0.5)*0.12;$speed=[Math]::Min(9.0,[Math]::Max(6.0,[Math]::Sqrt($state.PongVX*$state.PongVX+$state.PongVY*$state.PongVY)))
+        $verticalOffset=[Math]::Max(-1.0,[Math]::Min(1.0,$bodyY/21.0));$slope=$verticalOffset*0.78+($rng.NextDouble()-0.5)*0.82;$slope=[Math]::Max(-1.25,[Math]::Min(1.25,$slope));$speed=6.4+$rng.NextDouble()*2.3
         $outX=if($i -eq 0){1.0}else{-1.0};$normalizer=[Math]::Sqrt(1+$slope*$slope);$state.PongVX=$outX*$speed/$normalizer;$state.PongVY=$slope*$speed/$normalizer;$state.PongLastHitIndex=$i;$state.PongHits++
         if($state.PongHits -ge $state.PongHitLimit){$state.PongActive=$false;$state.PongMode=$false;$state.PongOnly=$false}
         break

@@ -41,7 +41,7 @@ $form.Controls.Add($tank)
 $screenSampleBitmap=New-Object System.Drawing.Bitmap(1,1)
 $screenSampleGraphics=[System.Drawing.Graphics]::FromImage($screenSampleBitmap)
 
-$state = [pscustomobject]@{ X=260.0; Y=120.0; Direction=1; Phase=0.0; Speed=3.2; Angle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Follow=$false; TypingForcedFollow=$false; WindowedBounds=[System.Drawing.Rectangle]::Empty; TextFocused=$false; LastFocusCheck=[datetime]::MinValue; KeepAwake=$true; Tilt=$true; ClickThrough=$false; IsDragging=$false; DraggingFishIndex=-1; FishCount=1; CarrierIndex=0; StealTurnsRemaining=0; PongMode=$false; PongPasses=0; Physics=$false; VelX=0.0; VelY=0.0; DragAt=[datetime]::UtcNow; PinnedCorner=$false; Stealing=$false; StealPhase=''; TypingSteal=$false; TypingGrabEnabled=$true; LastTypingAt=[datetime]::MinValue; StealOriginX=0; StealOriginY=0; StealEnabled=$true; StealChance=5; StealUntil=[datetime]::MinValue; StealTargetX=0.0; StealTargetY=0.0; EndWasDown=$false; DeleteWasDown=$false; BlubUntil=[datetime]::MinValue; NextBlub=[datetime]::UtcNow.AddSeconds(8); DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0; DragAxis=''; DragDir=0; DragLeg=0.0; DragPath=0.0; DragMin=0.0; DragMax=0.0; DragReversals=0; DragStarted=[datetime]::MinValue; AngryUntil=[datetime]::MinValue; LastLoc=$form.Location; LastMove=[datetime]::MinValue; WindowDragging=$false; WindowPhysics=$false; WindowVelX=0.0; WindowVelY=0.0; WindowBounds=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; WindowAt=[datetime]::UtcNow; ShakeAxis=''; ShakeDir=0; ShakeLeg=0.0; ShakePath=0.0; ShakeMin=0; ShakeMax=0; ShakeReversals=0; ShakeStarted=[datetime]::MinValue; LastCursor=[System.Windows.Forms.Cursor]::Position; CursorStillSince=[datetime]::UtcNow }
+$state = [pscustomobject]@{ X=260.0; Y=120.0; Direction=1; Phase=0.0; Speed=3.2; Angle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Follow=$false; TypingForcedFollow=$false; WindowedBounds=[System.Drawing.Rectangle]::Empty; TextFocused=$false; LastFocusCheck=[datetime]::MinValue; KeepAwake=$true; Tilt=$true; ClickThrough=$false; IsDragging=$false; DraggingFishIndex=-1; FishCount=1; CarrierIndex=0; StealTurnsRemaining=0; PongMode=$false; PongOnly=$false; PongPasses=0; Physics=$false; VelX=0.0; VelY=0.0; DragAt=[datetime]::UtcNow; PinnedCorner=$false; Stealing=$false; StealPhase=''; TypingSteal=$false; TypingGrabEnabled=$true; LastTypingAt=[datetime]::MinValue; StealOriginX=0; StealOriginY=0; StealEnabled=$true; StealChance=5; StealUntil=[datetime]::MinValue; StealTargetX=0.0; StealTargetY=0.0; EndWasDown=$false; DeleteWasDown=$false; BlubUntil=[datetime]::MinValue; NextBlub=[datetime]::UtcNow.AddSeconds(8); DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0; DragAxis=''; DragDir=0; DragLeg=0.0; DragPath=0.0; DragMin=0.0; DragMax=0.0; DragReversals=0; DragStarted=[datetime]::MinValue; AngryUntil=[datetime]::MinValue; LastLoc=$form.Location; LastMove=[datetime]::MinValue; WindowDragging=$false; WindowPhysics=$false; WindowVelX=0.0; WindowVelY=0.0; WindowBounds=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; WindowAt=[datetime]::UtcNow; ShakeAxis=''; ShakeDir=0; ShakeLeg=0.0; ShakePath=0.0; ShakeMin=0; ShakeMax=0; ShakeReversals=0; ShakeStarted=[datetime]::MinValue; LastCursor=[System.Windows.Forms.Cursor]::Position; CursorStillSince=[datetime]::UtcNow }
 $makeFish = { param($x,$y,$speed) [pscustomobject]@{ X=[double]$x; Y=[double]$y; Direction=1; Angle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Speed=[double]$speed; Dragging=$false; DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0 } }
 $buddy = & $makeFish 400 230 2.8
 $fish3 = & $makeFish 180 260 2.5
@@ -82,6 +82,7 @@ $startCursorSteal = {
     $best=0;$bestDistance=[double]::MaxValue
     for($i=0;$i -lt $state.FishCount;$i++){$fish=$fishies[$i];$fx=$screenOrigin.X+$fish.X+43;$fy=$screenOrigin.Y+$fish.Y+14;$d=[Math]::Pow($cursor.X-$fx,2)+[Math]::Pow($cursor.Y-$fy,2);if($d -lt $bestDistance){$best=$i;$bestDistance=$d}}
     $state.CarrierIndex=$best;$state.StealTurnsRemaining=$state.FishCount;$state.PongMode=($state.FishCount -eq 2 -and $rng.Next(100) -lt 24);$state.PongPasses=if($state.PongMode){6}else{0}
+    $state.PongOnly=$false
     & $pickStealTarget
   }
 }
@@ -151,8 +152,9 @@ foreach($count in 1..4){
     $tank.Invalidate()
   })
 }
+$playPongItem=New-Object System.Windows.Forms.ToolStripMenuItem('Play cursor pong now (uses 2 fish)')
 $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem('Quit Fish Tank')
-[void]$menu.Items.Add($awakeItem); [void]$menu.Items.Add($followItem); [void]$menu.Items.Add($clickItem); [void]$menu.Items.Add($tiltItem); [void]$menu.Items.Add($ambienceItem); [void]$menu.Items.Add($typingGrabItem); [void]$menu.Items.Add($mischiefItem); [void]$menu.Items.Add($chanceMenu); [void]$menu.Items.Add($fishCountMenu)
+[void]$menu.Items.Add($awakeItem); [void]$menu.Items.Add($followItem); [void]$menu.Items.Add($clickItem); [void]$menu.Items.Add($tiltItem); [void]$menu.Items.Add($ambienceItem); [void]$menu.Items.Add($typingGrabItem); [void]$menu.Items.Add($mischiefItem); [void]$menu.Items.Add($chanceMenu); [void]$menu.Items.Add($fishCountMenu); [void]$menu.Items.Add($playPongItem)
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)); [void]$menu.Items.Add($exitItem)
 $tray = New-Object System.Windows.Forms.NotifyIcon
 $tray.Text = 'Fish Tank settings'
@@ -172,6 +174,17 @@ $typingGrabItem.Add_Click({
     $state.Stealing=$false;$state.StealPhase='';$state.TypingSteal=$false;$state.Physics=$false
     if($state.TypingForcedFollow){$state.TypingForcedFollow=$false;$followItem.PerformClick()}
   }
+})
+$playPongItem.Add_Click({
+  # The one-click game always runs with exactly two fish, then leaves the cursor where the last fish held it.
+  if($state.TypingSteal){$state.TypingSteal=$false;if($state.TypingForcedFollow){$state.TypingForcedFollow=$false;$followItem.PerformClick()}}
+  if($state.Stealing){$state.Stealing=$false;$state.StealPhase=''}
+  $state.FishCount=2
+  foreach($item in $fishCountItems){$item.Checked=([int]$item.Tag -eq 2)}
+  if($buddy.TargetX -le 0){& $pickFishTarget $buddy}
+  & $startCursorSteal
+  $state.PongMode=$true;$state.PongOnly=$true;$state.PongPasses=8;$state.StealTurnsRemaining=0
+  $state.AngryUntil=[datetime]::MinValue
 })
 $mischiefItem.Add_Click({$mischiefItem.Checked=-not $mischiefItem.Checked;$state.StealEnabled=$mischiefItem.Checked})
 $clickItem.Add_Click({
@@ -421,7 +434,11 @@ $timer.Add_Tick({
     } elseif($state.StealPhase -eq 'Carrying'){
       $carrier=$fishies[$state.CarrierIndex]
       if($now -ge $state.StealUntil){
-        if($state.PongMode -and $state.PongPasses -gt 0){$state.PongPasses--;if($state.PongPasses -le 0){$state.PongMode=$false};$state.CarrierIndex=1-$state.CarrierIndex;$state.StealPhase='Hunting';$state.StealUntil=[datetime]::MinValue}
+        if($state.PongMode){
+          if($state.PongPasses -gt 1){$state.PongPasses--;$state.CarrierIndex=1-$state.CarrierIndex;$state.StealPhase='Hunting';$state.StealUntil=[datetime]::MinValue}
+          elseif($state.TypingSteal){$state.PongMode=$false;$state.PongOnly=$false;$state.PongPasses=0;$state.StealTurnsRemaining=$state.FishCount;$state.CarrierIndex=1-$state.CarrierIndex;$state.StealPhase='Hunting';$state.StealUntil=[datetime]::MinValue}
+          else{$state.Stealing=$false;$state.StealPhase='';$state.PongMode=$false;$state.PongOnly=$false;$stealJustFinished=$true}
+        }
         elseif($state.StealTurnsRemaining -gt 1){$state.StealTurnsRemaining--;$state.CarrierIndex=($state.CarrierIndex+1)%$state.FishCount;$state.StealPhase='Hunting';$state.StealUntil=[datetime]::MinValue}
         elseif($state.TypingSteal){$state.StealTurnsRemaining=$state.FishCount;$state.CarrierIndex=($state.CarrierIndex+1)%$state.FishCount;$state.StealPhase='Hunting';$state.StealUntil=[datetime]::MinValue}
         else{

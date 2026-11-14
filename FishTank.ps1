@@ -75,13 +75,13 @@ $startPongGame = {
   $state.FishCount=2
   foreach($item in $fishCountItems){$item.Checked=([int]$item.Tag -eq 2)}
   if($buddy.TargetX -le 0){& $pickFishTarget $buddy}
-  for($i=0;$i -lt 2;$i++){$f=$fishies[$i];$f.X=[Math]::Max(5,[Math]::Min($tank.ClientSize.Width-92,$f.X));$f.Y=[Math]::Max(30,[Math]::Min($tank.ClientSize.Height-60,$f.Y));$f.Dragging=$false}
+  $w=$tank.ClientSize.Width;$h=$tank.ClientSize.Height;$leftCenter=$w*0.24;$rightCenter=$w*0.72;$middleY=$h*0.5
+  $state.X=$leftCenter-43;$state.Y=$middleY-14;$state.Heading=0.0;$state.Direction=1;$state.Angle=0.0;$state.Dragging=$false
+  $buddy.X=$rightCenter-43;$buddy.Y=$middleY-14;$buddy.Heading=[Math]::PI;$buddy.Direction=-1;$buddy.Angle=0.0;$buddy.Dragging=$false
   $state.Stealing=$false;$state.StealPhase='';$state.IsDragging=$false;$state.Physics=$false;$state.PinnedCorner=$false;$state.PongMode=$false;$state.PongOnly=$false
   $state.PongActive=$true;$state.PongHits=0;$state.PongHitLimit=8;$state.PongEndsAt=[datetime]::UtcNow.AddSeconds(30);$state.PongLastHitIndex=1
-  $cx0=$state.X+43;$cy0=$state.Y+14;$cx1=$buddy.X+43;$cy1=$buddy.Y+14
-  $ballX=($cx0+$cx1)/2;$ballY=($cy0+$cy1)/2
-  $dx=$cx0-$ballX;$dy=$cy0-$ballY;$distance=[Math]::Max(1,[Math]::Sqrt($dx*$dx+$dy*$dy))
-  $state.PongVX=($dx/$distance)*8.5;$state.PongVY=($dy/$distance)*8.5
+  $ballX=($leftCenter+$rightCenter)/2;$ballY=$middleY
+  $state.PongVX=-6.0;$state.PongVY=($rng.NextDouble()-0.5)*2.2
   $origin=$tank.PointToScreen([System.Drawing.Point]::Empty);$px=[int]($origin.X+$ballX);$py=[int]($origin.Y+$ballY)
   [FishTankNative]::SetCursorPos($px,$py)|Out-Null;$state.LastCursor=New-Object System.Drawing.Point($px,$py);$state.CursorStillSince=[datetime]::UtcNow
 }
@@ -417,25 +417,28 @@ $timer.Add_Tick({
   if($state.PongActive){
     $origin=$tank.PointToScreen([System.Drawing.Point]::Empty);$cursor=[System.Windows.Forms.Cursor]::Position
     $ballX=$cursor.X-$origin.X;$ballY=$cursor.Y-$origin.Y
-    # Both fish swim toward the live cursor and rotate to match their actual travel direction.
+    $leftCenter=$tank.ClientSize.Width*0.24;$rightCenter=$tank.ClientSize.Width*0.72;$topY=44.0;$bottomY=[Math]::Max($topY,$tank.ClientSize.Height-44.0);$span=[Math]::Max(1,$bottomY-$topY)
+    # Keep the fish on opposite paddle lines; they only move vertically to intercept an incoming puck.
     for($i=0;$i -lt 2;$i++){
-      $f=$fishies[$i];$dx=$ballX-($f.X+43);$dy=$ballY-($f.Y+14);$desired=[Math]::Atan2($dy,$dx)
-      $delta=[Math]::Atan2([Math]::Sin($desired-$f.Heading),[Math]::Cos($desired-$f.Heading));$f.Heading += [Math]::Max(-0.12,[Math]::Min(0.12,$delta))
-      $f.Direction=if([Math]::Cos($f.Heading) -lt 0){-1}else{1};$distance=[Math]::Sqrt($dx*$dx+$dy*$dy);$speed=5.2+[Math]::Min(2.8,$distance*0.006)
-      $f.X += [Math]::Cos($f.Heading)*$speed;$f.Y += [Math]::Sin($f.Heading)*$speed
-      $f.X=[Math]::Max(5,[Math]::Min($tank.ClientSize.Width-92,$f.X));$f.Y=[Math]::Max(30,[Math]::Min($tank.ClientSize.Height-60,$f.Y))
-      $f.Angle=[Math]::Atan2([Math]::Sin($f.Heading),[Math]::Cos($f.Heading))*180/[Math]::PI;if($f.Direction -lt 0){$f.Angle-=180}
+      $f=$fishies[$i];$paddleX=if($i -eq 0){$leftCenter}else{$rightCenter};$f.X=$paddleX-43;$f.Heading=if($i -eq 0){0.0}else{[Math]::PI};$f.Direction=if($i -eq 0){1}else{-1};$f.Angle=0.0
+      $targetY=$f.Y+14
+      if(($i -eq 0 -and $state.PongVX -lt 0) -or ($i -eq 1 -and $state.PongVX -gt 0)){
+        $frames=[Math]::Max(0,($paddleX-$ballX)/$state.PongVX);$rawY=$ballY+$state.PongVY*$frames;$fold=($rawY-$topY)%(2*$span);if($fold -lt 0){$fold+=2*$span};if($fold -gt $span){$targetY=$bottomY-($fold-$span)}else{$targetY=$topY+$fold}
+      }
+      $verticalStep=[Math]::Max(-10.0,[Math]::Min(10.0,$targetY-($f.Y+14)));$f.Y += $verticalStep;$f.Y=[Math]::Max(30,[Math]::Min($tank.ClientSize.Height-60,$f.Y))
     }
     $nextX=$ballX+$state.PongVX;$nextY=$ballY+$state.PongVY
-    if($nextX -lt 8){$nextX=8;$state.PongVX=[Math]::Abs($state.PongVX)}elseif($nextX -gt $tank.ClientSize.Width-8){$nextX=$tank.ClientSize.Width-8;$state.PongVX=-[Math]::Abs($state.PongVX)}
-    if($nextY -lt 8){$nextY=8;$state.PongVY=[Math]::Abs($state.PongVY)}elseif($nextY -gt $tank.ClientSize.Height-8){$nextY=$tank.ClientSize.Height-8;$state.PongVY=-[Math]::Abs($state.PongVY)}
-    # The fish's long body is the paddle. Contact knocks the cursor puck toward the other fish.
+    if($nextY -lt $topY){$nextY=$topY+($topY-$nextY);$state.PongVY=[Math]::Abs($state.PongVY)}elseif($nextY -gt $bottomY){$nextY=$bottomY-($nextY-$bottomY);$state.PongVY=-[Math]::Abs($state.PongVY)}
+    # A missed paddle loses the point and serves again toward that side; the end walls never score as hits.
+    $missedIndex=if($nextX -lt ($leftCenter-44)){0}elseif($nextX -gt ($rightCenter+44)){1}else{-1}
+    if($missedIndex -ge 0){$nextX=($leftCenter+$rightCenter)/2;$nextY=($topY+$bottomY)/2;$state.PongLastHitIndex=1-$missedIndex;$state.PongVX=if($missedIndex -eq 0){-6.0}else{6.0};$state.PongVY=($rng.NextDouble()-0.5)*2.2}
+    # A body hit aims the cursor puck at the opposite paddle, with its vertical offset setting the rebound angle.
     for($i=0;$i -lt 2;$i++){
       if($i -eq $state.PongLastHitIndex){continue}
-      $f=$fishies[$i];$rx=$nextX-($f.X+43);$ry=$nextY-($f.Y+14);$along=$rx*[Math]::Cos($f.Heading)+$ry*[Math]::Sin($f.Heading);$across=-$rx*[Math]::Sin($f.Heading)+$ry*[Math]::Cos($f.Heading)
-      if(([Math]::Pow($along/38.0,2)+[Math]::Pow($across/16.0,2)) -le 1){
-        $opponent=$fishies[1-$i];$aimX=($opponent.X+43)-($f.X+43);$aimY=($opponent.Y+14)-($f.Y+14)+($rng.NextDouble()-0.5)*45;$aimLength=[Math]::Max(1,[Math]::Sqrt($aimX*$aimX+$aimY*$aimY));$speed=[Math]::Min(15.5,[Math]::Max(8.5,[Math]::Sqrt($state.PongVX*$state.PongVX+$state.PongVY*$state.PongVY)*1.06))
-        $state.PongVX=($aimX/$aimLength)*$speed;$state.PongVY=($aimY/$aimLength)*$speed;$state.PongLastHitIndex=$i;$state.PongHits++
+      $f=$fishies[$i];$paddleX=if($i -eq 0){$leftCenter}else{$rightCenter};$bodyX=$nextX-($f.X+43);$bodyY=$nextY-($f.Y+14)
+      if([Math]::Abs($nextX-$paddleX) -le 8 -and [Math]::Abs($bodyY) -le 21){
+        $verticalOffset=[Math]::Max(-1.0,[Math]::Min(1.0,$bodyY/21.0));$slope=$verticalOffset*0.8+($rng.NextDouble()-0.5)*0.12;$speed=[Math]::Min(9.0,[Math]::Max(6.0,[Math]::Sqrt($state.PongVX*$state.PongVX+$state.PongVY*$state.PongVY)))
+        $outX=if($i -eq 0){1.0}else{-1.0};$normalizer=[Math]::Sqrt(1+$slope*$slope);$state.PongVX=$outX*$speed/$normalizer;$state.PongVY=$slope*$speed/$normalizer;$state.PongLastHitIndex=$i;$state.PongHits++
         if($state.PongHits -ge $state.PongHitLimit){$state.PongActive=$false;$state.PongMode=$false;$state.PongOnly=$false}
         break
       }

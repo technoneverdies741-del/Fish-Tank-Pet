@@ -42,12 +42,19 @@ $screenSampleBitmap=New-Object System.Drawing.Bitmap(1,1)
 $screenSampleGraphics=[System.Drawing.Graphics]::FromImage($screenSampleBitmap)
 
 $state = [pscustomobject]@{ X=260.0; Y=120.0; Direction=1; Phase=0.0; Speed=3.2; Angle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Follow=$false; TypingForcedFollow=$false; WindowedBounds=[System.Drawing.Rectangle]::Empty; TextFocused=$false; LastFocusCheck=[datetime]::MinValue; KeepAwake=$true; Tilt=$true; ClickThrough=$false; IsDragging=$false; Physics=$false; VelX=0.0; VelY=0.0; DragAt=[datetime]::UtcNow; PinnedCorner=$false; Stealing=$false; StealPhase=''; TypingSteal=$false; LastTypingAt=[datetime]::MinValue; StealOriginX=0; StealOriginY=0; StealEnabled=$true; StealChance=5; StealUntil=[datetime]::MinValue; StealTargetX=0.0; StealTargetY=0.0; EndWasDown=$false; DeleteWasDown=$false; BlubUntil=[datetime]::MinValue; NextBlub=[datetime]::UtcNow.AddSeconds(8); DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0; DragAxis=''; DragDir=0; DragLeg=0.0; DragPath=0.0; DragMin=0.0; DragMax=0.0; DragReversals=0; DragStarted=[datetime]::MinValue; AngryUntil=[datetime]::MinValue; LastLoc=$form.Location; LastMove=[datetime]::MinValue; WindowDragging=$false; WindowPhysics=$false; WindowVelX=0.0; WindowVelY=0.0; WindowBounds=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; WindowAt=[datetime]::UtcNow; ShakeAxis=''; ShakeDir=0; ShakeLeg=0.0; ShakePath=0.0; ShakeMin=0; ShakeMax=0; ShakeReversals=0; ShakeStarted=[datetime]::MinValue; LastCursor=[System.Windows.Forms.Cursor]::Position; CursorStillSince=[datetime]::UtcNow }
+$buddy = [pscustomobject]@{ X=400.0; Y=230.0; Direction=-1; Angle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Speed=2.8; Dragging=$false; DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0 }
 $rng = New-Object System.Random
 $pickRoamTarget = {
   $left=24.0; $right=[Math]::Max($left+1,$tank.ClientSize.Width-118.0)
   $top=24.0; $bottom=[Math]::Max($top+1,$tank.ClientSize.Height-58.0)
   $state.TargetX=$left+$rng.NextDouble()*($right-$left)
   $state.TargetY=$top+$rng.NextDouble()*($bottom-$top)
+}
+$pickBuddyTarget = {
+  $left=24.0;$right=[Math]::Max($left+1,$tank.ClientSize.Width-118.0)
+  $top=24.0;$bottom=[Math]::Max($top+1,$tank.ClientSize.Height-58.0)
+  $buddy.TargetX=$left+$rng.NextDouble()*($right-$left)
+  $buddy.TargetY=$top+$rng.NextDouble()*($bottom-$top)
 }
 $pickStealTarget = {
   $left=30.0;$right=[Math]::Max($left+1,$tank.ClientSize.Width-125.0)
@@ -217,26 +224,60 @@ $tank.Add_Paint({
     $g.DrawString('blub blub',$blubFont,$blubBrush,[single]($state.X+20),[single]([Math]::Max(2,$state.Y-19)))
     $blubFont.Dispose();$blubBrush.Dispose()
   }
+  $buddyInk=[System.Drawing.Color]::White
+  try {
+    $sampleAngle=$buddy.Angle*[Math]::PI/180.0;$perpX=-[Math]::Sin($sampleAngle)*52;$perpY=[Math]::Cos($sampleAngle)*52
+    $luminance=0.0;$sampleCount=0
+    foreach($side in @(1,-1)){
+      $sample=$tank.PointToScreen((New-Object System.Drawing.Point([int]($buddy.X+43+$perpX*$side),[int]($buddy.Y+14+$perpY*$side))))
+      $visible=$false;foreach($monitor in [System.Windows.Forms.Screen]::AllScreens){if($monitor.Bounds.Contains($sample)){$visible=$true;break}}
+      if($visible){$screenSampleGraphics.CopyFromScreen($sample,[System.Drawing.Point]::Empty,(New-Object System.Drawing.Size(1,1)));$pixel=$screenSampleBitmap.GetPixel(0,0);$luminance+=0.2126*$pixel.R+0.7152*$pixel.G+0.0722*$pixel.B;$sampleCount++}
+    }
+    if($sampleCount -gt 0 -and ($luminance/$sampleCount) -ge 128){$buddyInk=[System.Drawing.Color]::Black}
+  } catch { $buddyInk=[System.Drawing.Color]::White }
+  $buddyBrush=New-Object System.Drawing.SolidBrush($buddyInk)
+  $buddyText='<o))><';if($buddy.Direction -gt 0){$buddyText='><((o>'}
+  $buddyCx=[single]($buddy.X+43);$buddyCy=[single]($buddy.Y+14)
+  $g.TranslateTransform($buddyCx,$buddyCy)
+  if(-not $state.Follow -or $state.Tilt){$g.RotateTransform([single]$buddy.Angle)}
+  $g.TranslateTransform(-$buddyCx,-$buddyCy)
+  $g.DrawString($buddyText,$fishFont,$buddyBrush,[single]$buddy.X,[single]$buddy.Y)
+  $g.ResetTransform();$buddyBrush.Dispose()
   $fishFont.Dispose(); $ink.Dispose()
 })
 
 # The transparent canvas lets clicks pass through; the fish glyph itself remains draggable.
 $tank.Add_MouseDown({
   param($sender,$e)
-  $hitX=$e.X-($state.X+43);$hitY=$e.Y-($state.Y+14)
-  if($e.Button -eq [System.Windows.Forms.MouseButtons]::Left -and -not $state.ClickThrough -and -not $state.Stealing -and
-     ($hitX*$hitX+$hitY*$hitY) -le 3600) {
-    $state.PinnedCorner=$false
-    $state.IsDragging=$true; $state.DragOffsetX=$e.X-$state.X; $state.DragOffsetY=$e.Y-$state.Y
-    $state.LastDragX=$e.X; $state.LastDragY=$e.Y; $sender.Capture=$true
-    $state.Physics=$false;$state.VelX=0;$state.VelY=0;$state.DragAt=[datetime]::UtcNow
-    $state.DragAxis='';$state.DragDir=0;$state.DragLeg=0;$state.DragPath=0;$state.DragReversals=0;$state.DragStarted=[datetime]::UtcNow
-    $state.DragMin=0;$state.DragMax=0
+  $buddyHitX=$e.X-($buddy.X+43);$buddyHitY=$e.Y-($buddy.Y+14)
+  $fishHitX=$e.X-($state.X+43);$fishHitY=$e.Y-($state.Y+14)
+  if($e.Button -eq [System.Windows.Forms.MouseButtons]::Left -and -not $state.ClickThrough){
+    if(($buddyHitX*$buddyHitX+$buddyHitY*$buddyHitY) -le 3600){
+      $buddy.Dragging=$true;$buddy.DragOffsetX=$e.X-$buddy.X;$buddy.DragOffsetY=$e.Y-$buddy.Y
+      $buddy.LastDragX=$e.X;$buddy.LastDragY=$e.Y;$sender.Capture=$true
+    } elseif(-not $state.Stealing -and ($fishHitX*$fishHitX+$fishHitY*$fishHitY) -le 3600){
+      $state.PinnedCorner=$false
+      $state.IsDragging=$true; $state.DragOffsetX=$e.X-$state.X; $state.DragOffsetY=$e.Y-$state.Y
+      $state.LastDragX=$e.X; $state.LastDragY=$e.Y; $sender.Capture=$true
+      $state.Physics=$false;$state.VelX=0;$state.VelY=0;$state.DragAt=[datetime]::UtcNow
+      $state.DragAxis='';$state.DragDir=0;$state.DragLeg=0;$state.DragPath=0;$state.DragReversals=0;$state.DragStarted=[datetime]::UtcNow
+      $state.DragMin=0;$state.DragMax=0
+    }
   }
 })
 $tank.Add_MouseMove({
   param($sender,$e)
-  if($state.IsDragging){
+  if($buddy.Dragging){
+    $mx=$e.X-$buddy.LastDragX;$my=$e.Y-$buddy.LastDragY
+    $buddy.X=$e.X-$buddy.DragOffsetX;$buddy.Y=$e.Y-$buddy.DragOffsetY
+    if([Math]::Abs($mx)+[Math]::Abs($my) -gt 1){
+      $buddy.Direction=if($mx -lt 0){-1}else{1}
+      $buddy.Heading=[Math]::Atan2($my,$mx)
+      $buddy.Angle=$buddy.Heading
+      if($buddy.Direction -lt 0){$buddy.Angle-=180}
+    }
+    $buddy.LastDragX=$e.X;$buddy.LastDragY=$e.Y;$sender.Invalidate()
+  } elseif($state.IsDragging){
     $mx=$e.X-$state.LastDragX; $my=$e.Y-$state.LastDragY
     $now=[datetime]::UtcNow;$dragDt=[Math]::Max(0.001,($now-$state.DragAt).TotalSeconds)
     $state.X=$e.X-$state.DragOffsetX; $state.Y=$e.Y-$state.DragOffsetY
@@ -266,18 +307,22 @@ $tank.Add_MouseMove({
 $tank.Add_MouseUp({
   param($sender,$e)
   if($e.Button -eq [System.Windows.Forms.MouseButtons]::Left){
-    $state.IsDragging=$false;$sender.Capture=$false
-    if($state.Follow){
-      $w=$tank.ClientSize.Width;$h=$tank.ClientSize.Height;$cx=$state.X+43;$cy=$state.Y+14
-      $left=$cx -lt 60;$right=$cx -gt ($w-60);$top=$cy -lt 60;$bottom=$cy -gt ($h-60)
-      if(($left -or $right) -and ($top -or $bottom)){
-        $state.PinnedCorner=$true
-        $state.X=if($left){12}else{$w-105};$state.Y=if($top){12}else{$h-48}
+    if($buddy.Dragging){$buddy.Dragging=$false;& $pickBuddyTarget}
+    elseif($state.IsDragging){
+      $state.IsDragging=$false
+      if($state.Follow){
+        $w=$tank.ClientSize.Width;$h=$tank.ClientSize.Height;$cx=$state.X+43;$cy=$state.Y+14
+        $left=$cx -lt 60;$right=$cx -gt ($w-60);$top=$cy -lt 60;$bottom=$cy -gt ($h-60)
+        if(($left -or $right) -and ($top -or $bottom)){
+          $state.PinnedCorner=$true
+          $state.X=if($left){12}else{$w-105};$state.Y=if($top){12}else{$h-48}
+        }
       }
+      if($state.PinnedCorner){$state.Physics=$false;$state.VelX=0;$state.VelY=0}
+      elseif([Math]::Sqrt($state.VelX*$state.VelX+$state.VelY*$state.VelY) -gt 65){$state.Physics=$true}
+      elseif(-not $state.Follow){& $pickRoamTarget}
     }
-    if($state.PinnedCorner){$state.Physics=$false;$state.VelX=0;$state.VelY=0}
-    elseif([Math]::Sqrt($state.VelX*$state.VelX+$state.VelY*$state.VelY) -gt 65){$state.Physics=$true}
-    elseif(-not $state.Follow){& $pickRoamTarget}
+    $sender.Capture=$false
   }
 })
 
@@ -325,6 +370,7 @@ $timer.Add_Tick({
     $state.IsDragging=$false; $tank.Capture=$false
     if(-not $state.PinnedCorner -and [Math]::Sqrt($state.VelX*$state.VelX+$state.VelY*$state.VelY) -gt 65){$state.Physics=$true}
   }
+  if($buddy.Dragging -and (([System.Windows.Forms.Control]::MouseButtons -band [System.Windows.Forms.MouseButtons]::Left) -eq 0)){$buddy.Dragging=$false;& $pickBuddyTarget}
   $state.Phase+=0.035
   if($state.Stealing){
     $screen=[System.Windows.Forms.Screen]::FromPoint([System.Windows.Forms.Cursor]::Position).Bounds
@@ -516,6 +562,20 @@ $timer.Add_Tick({
       if($state.Angle -gt 180){$state.Angle-=360}; if($state.Angle -lt -180){$state.Angle+=360}
     }
   }
+  if(-not $buddy.Dragging){
+    $buddyMaxX=[Math]::Max(32,$tank.ClientSize.Width-105);$buddyMaxY=[Math]::Max(30,$tank.ClientSize.Height-48)
+    if($buddy.TargetX -le 0 -or [Math]::Sqrt([Math]::Pow($buddy.TargetX-$buddy.X,2)+[Math]::Pow($buddy.TargetY-$buddy.Y,2)) -lt 32){& $pickBuddyTarget}
+    $buddyDx=$buddy.TargetX-$buddy.X;$buddyDy=$buddy.TargetY-$buddy.Y
+    $buddyDesired=[Math]::Atan2($buddyDy,$buddyDx)
+    $buddyDelta=[Math]::Atan2([Math]::Sin($buddyDesired-$buddy.Heading),[Math]::Cos($buddyDesired-$buddy.Heading))
+    $buddy.Heading += [Math]::Max(-0.07,[Math]::Min(0.07,$buddyDelta))
+    $buddy.X += [Math]::Cos($buddy.Heading)*$buddy.Speed;$buddy.Y += [Math]::Sin($buddy.Heading)*$buddy.Speed
+    $buddy.X=[Math]::Max(5,[Math]::Min($tank.ClientSize.Width-92,$buddy.X));$buddy.Y=[Math]::Max(30,[Math]::Min($tank.ClientSize.Height-60,$buddy.Y))
+    if($buddy.X -le 5 -or $buddy.X -ge $tank.ClientSize.Width-92 -or $buddy.Y -le 30 -or $buddy.Y -ge $tank.ClientSize.Height-60){& $pickBuddyTarget}
+    $buddy.Direction=if([Math]::Cos($buddy.Heading) -lt 0){-1}else{1}
+    $buddy.Angle=[Math]::Atan2([Math]::Sin($buddy.Heading),[Math]::Cos($buddy.Heading))*180/[Math]::PI
+    if($buddy.Direction -lt 0){$buddy.Angle-=180};if($buddy.Angle -gt 180){$buddy.Angle-=360};if($buddy.Angle -lt -180){$buddy.Angle+=360}
+  }
   $tank.Invalidate()
 })
 
@@ -527,6 +587,8 @@ $form.Add_Shown({
   [FishTankNative]::SetStyle($form.Handle,-20,$style)
   if($state.KeepAwake){[FishTankNative]::SetThreadExecutionState([uint32]2147483649) | Out-Null}
   & $pickRoamTarget
+  $buddy.X=[Math]::Max(18,[Math]::Min($tank.ClientSize.Width-105,400));$buddy.Y=[Math]::Max(18,[Math]::Min($tank.ClientSize.Height-48,230))
+  & $pickBuddyTarget
   $timer.Start()
 })
 $form.Add_FormClosed({ [FishTankNative]::SetThreadExecutionState([uint32]2147483648) | Out-Null;$timer.Stop();$timer.Dispose();$tray.Visible=$false;$tray.Dispose();$menu.Dispose();$blubPlayer.Stop();$blubPlayer.Dispose();$blubStream.Dispose();$writer.Dispose();$wav.Dispose();$screenSampleGraphics.Dispose();$screenSampleBitmap.Dispose() })

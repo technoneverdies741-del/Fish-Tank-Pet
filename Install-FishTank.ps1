@@ -53,7 +53,7 @@ try {
 
   Start-Process -FilePath $powershell -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$(Join-Path $installDir 'FishTank.ps1')`"")
   [void][System.Windows.Forms.MessageBox]::Show(
-    'Fish Tank is installed. Its tray menu includes “Keep computer awake while Fish Tank is open.” This prevents sleep without moving the mouse.',
+    'Fish Tank is installed. It can keep this PC awake while it is open without moving the mouse. Use the tray menu to turn this on or off.',
     'Fish Tank Setup',
     [System.Windows.Forms.MessageBoxButtons]::OK,
     [System.Windows.Forms.MessageBoxIcon]::Information

@@ -20,6 +20,8 @@ Fish Tank does not move the pointer to simulate activity. Ask the computer's own
 
 When a text box is focused, Fish Tank hunts the pointer, carries it while the field remains focused, then drops it where it is when focus leaves. Press **Delete** to kick him off. Press **End** to manually lure him.
 
+The tray menu's **Number of fish** setting starts with one fish and lets you add up to four. When more than one is selected, the fish pass the cursor to one another, each holding it for 10 seconds. With exactly two fish, they sometimes start a short, fast cursor-pong volley.
+
 The cursor mischief chance and other options are in the Fish Tank tray menu. The fish changes between black and white based on nearby screen brightness.
 
 ## Requirements

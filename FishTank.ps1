@@ -262,7 +262,7 @@ $tank.Add_Paint({
     for($i=0;$i -lt 4;$i++) { $x=[single](($i*179+$state.Phase*4)%[Math]::Max(1,$w)); $y=[single]($h-14-(($i*61)%[Math]::Max(1,$h-20))); $g.FillEllipse($glint,$x,$y,2,2) }
     $glint.Dispose()
   }
-  $fishFontSize=if($state.PongActive){14}else{23}
+  $fishFontSize=14
   $fishFont=New-Object System.Drawing.Font('Consolas',$fishFontSize,[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel)
   for($fishIndex=0;$fishIndex -lt $state.FishCount;$fishIndex++){
     if($state.FishHidden){break}
@@ -280,8 +280,7 @@ $tank.Add_Paint({
     $fishBrush=New-Object System.Drawing.SolidBrush($fishInk)
     $fishText='<o))><';if($fish.Direction -gt 0){$fishText='><((o>'}
     $cx=[single]($fish.X+43);$cy=[single]($fish.Y+14)
-    $drawX=[single]$fish.X;$drawY=[single]$fish.Y
-    if($state.PongActive){$drawX=[single]($fish.X+18);$drawY=[single]($fish.Y+7)}
+    $drawX=[single]($fish.X+18);$drawY=[single]($fish.Y+7)
     $g.TranslateTransform($cx,$cy)
     if(-not $state.Follow -or $state.Tilt -or ($fishIndex -eq 0 -and $state.PinnedCorner)){$g.RotateTransform([single]$fish.Angle)}
     $g.TranslateTransform(-$cx,-$cy);$g.DrawString($fishText,$fishFont,$fishBrush,$drawX,$drawY);$g.ResetTransform();$fishBrush.Dispose()

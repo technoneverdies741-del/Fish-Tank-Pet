@@ -55,6 +55,8 @@ $state | Add-Member -NotePropertyName HatColor -NotePropertyValue ([System.Drawi
 $state | Add-Member -NotePropertyName HatAccentColor -NotePropertyValue ([System.Drawing.Color]::White)
 $state | Add-Member -NotePropertyName HatColorCustom -NotePropertyValue $false
 $state | Add-Member -NotePropertyName RocketLeagueOverrideUntil -NotePropertyValue ([datetime]::MinValue)
+$state | Add-Member -NotePropertyName AutoBreedEnabled -NotePropertyValue $false
+$state | Add-Member -NotePropertyName NextBreed -NotePropertyValue ([datetime]::MaxValue)
 $state | Add-Member -NotePropertyName PgUpWasDown -NotePropertyValue $false
 $state | Add-Member -NotePropertyName PgDownWasDown -NotePropertyValue $false
 $state | Add-Member -NotePropertyName PgUpStarted -NotePropertyValue ([datetime]::MinValue)
@@ -190,8 +192,16 @@ $setFishCount = {
   for($i=1;$i -lt $state.FishCount;$i++){if($fishies[$i].TargetX -le 0){& $pickFishTarget $fishies[$i]}}
   if($state.CarrierIndex -ge $state.FishCount){$state.CarrierIndex=0}
   if($state.Stealing -and $state.StealPhase -eq 'Carrying' -and $state.CarrierIndex -ge $state.FishCount){$state.StealPhase='Hunting'}
+  if($state.FishCount -ge 200 -and $state.AutoBreedEnabled){$state.AutoBreedEnabled=$false;$breedItem.Checked=$false;$state.NextBreed=[datetime]::MaxValue}
   $tank.Invalidate()
 }
+$breedItem=New-Object System.Windows.Forms.ToolStripMenuItem('Reproduce every 10 seconds')
+$breedItem.Checked=$false
+$breedItem.Add_Click({
+  $breedItem.Checked=-not $breedItem.Checked
+  $state.AutoBreedEnabled=$breedItem.Checked
+  $state.NextBreed=if($state.AutoBreedEnabled){[datetime]::UtcNow.AddSeconds(10)}else{[datetime]::MaxValue}
+})
 foreach($count in 1..200){
   $countItem=New-Object System.Windows.Forms.ToolStripMenuItem("$count fish")
   $countItem.Tag=$count;$countItem.Checked=($count -eq 1)
@@ -234,7 +244,7 @@ $hatColorItem.Add_Click({if($hatColorDialog.ShowDialog($form) -eq [System.Window
 [void]$hatStyleMenu.DropDownItems.Add($hatColorItem)
 $playPongItem=New-Object System.Windows.Forms.ToolStripMenuItem('Toggle cursor pong (Insert; uses 2 fish)')
 $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem('Quit Fish Tank')
-[void]$menu.Items.Add($awakeItem); [void]$menu.Items.Add($followItem); [void]$menu.Items.Add($clickItem); [void]$menu.Items.Add($tiltItem); [void]$menu.Items.Add($ambienceItem); [void]$menu.Items.Add($fishColorItem); [void]$menu.Items.Add($hatStyleMenu); [void]$menu.Items.Add($typingGrabItem); [void]$menu.Items.Add($mischiefItem); [void]$menu.Items.Add($chanceMenu); [void]$menu.Items.Add($fishCountMenu); [void]$menu.Items.Add($playPongItem)
+[void]$menu.Items.Add($awakeItem); [void]$menu.Items.Add($followItem); [void]$menu.Items.Add($clickItem); [void]$menu.Items.Add($tiltItem); [void]$menu.Items.Add($ambienceItem); [void]$menu.Items.Add($fishColorItem); [void]$menu.Items.Add($hatStyleMenu); [void]$menu.Items.Add($typingGrabItem); [void]$menu.Items.Add($mischiefItem); [void]$menu.Items.Add($chanceMenu); [void]$menu.Items.Add($fishCountMenu); [void]$menu.Items.Add($breedItem); [void]$menu.Items.Add($playPongItem)
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)); [void]$menu.Items.Add($exitItem)
 $tray = New-Object System.Windows.Forms.NotifyIcon
 $tray.Text = 'Fish Tank settings'
@@ -484,6 +494,7 @@ $timer.Add_Tick({
     elseif(-not $rocketLeagueOpen -and $state.RocketLeaguePaused){
       $pausedFor=$now-$state.RocketLeaguePauseStarted
       foreach($pausedFish in $fishies){$pausedFish.NextBlub=$pausedFish.NextBlub.Add($pausedFor);if($pausedFish.BlubUntil -gt $state.RocketLeaguePauseStarted){$pausedFish.BlubUntil=$pausedFish.BlubUntil.Add($pausedFor)}}
+      if($state.AutoBreedEnabled){$state.NextBreed=$state.NextBreed.Add($pausedFor)}
       $state.RocketLeaguePaused=$false;$state.RocketLeaguePauseStarted=[datetime]::MinValue;$state.RocketLeagueOverrideUntil=[datetime]::MinValue;$state.LastCursor=[System.Windows.Forms.Cursor]::Position;$state.CursorStillSince=$now;$tank.Invalidate()
     }
   }
@@ -502,6 +513,15 @@ $timer.Add_Tick({
     }
     $state.LastLoc=$loc;$state.WindowAt=$now
     if($now -ge $state.RocketLeagueOverrideUntil){$tank.Invalidate();return}
+  }
+  if($state.AutoBreedEnabled -and -not $state.PongActive -and $state.FishCount -lt 200 -and $now -ge $state.NextBreed){
+    $newFish=$fishies[$state.FishCount];$parent=$fishies[$rng.Next($state.FishCount)]
+    $newFish.X=[Math]::Max(8,[Math]::Min($tank.ClientSize.Width-92,$parent.X+($rng.NextDouble()-0.5)*28))
+    $newFish.Y=[Math]::Max(30,[Math]::Min($tank.ClientSize.Height-60,$parent.Y+($rng.NextDouble()-0.5)*28))
+    $newFish.Heading=$parent.Heading;$newFish.Direction=$parent.Direction;$newFish.Angle=$parent.Angle;$newFish.TargetX=0;$newFish.TargetY=0;$newFish.Dragging=$false;$newFish.BlubUntil=[datetime]::MinValue;$newFish.AngryUntil=[datetime]::MinValue;$newFish.NextBlub=$now.AddSeconds($rng.Next(8,19))
+    & $setFishCount ($state.FishCount+1)
+    if($state.FishCount -ge 200){$state.AutoBreedEnabled=$false;$breedItem.Checked=$false;$state.NextBreed=[datetime]::MaxValue}
+    else{$state.NextBreed=$now.AddSeconds(10)}
   }
   if($state.KeepAwake -and ($now-$state.KeepAwakeRefresh).TotalSeconds -ge 30){& $applyKeepAwake}
   if(($now-$state.LastFocusCheck).TotalMilliseconds -ge 200){
@@ -844,5 +864,3 @@ $form.Add_Shown({
 })
 $form.Add_FormClosed({ [FishTankNative]::SetThreadExecutionState([uint32]2147483648) | Out-Null;$timer.Stop();$timer.Dispose();$tray.Visible=$false;$tray.Dispose();$menu.Dispose();$colorDialog.Dispose();$hatColorDialog.Dispose();$blubPlayer.Stop();$blubPlayer.Dispose();$blubStream.Dispose();$writer.Dispose();$wav.Dispose();$screenSampleGraphics.Dispose();$screenSampleBitmap.Dispose() })
 [void]$form.ShowDialog()
-
-

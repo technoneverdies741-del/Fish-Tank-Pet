@@ -7,6 +7,7 @@ Add-Type -AssemblyName UIAutomationTypes
 $native = @'
 using System;
 using System.Runtime.InteropServices;
+
 public static class FishTankNative {
   [DllImport("user32.dll", EntryPoint="GetWindowLong", SetLastError=true)] static extern int GetWindowLong32(IntPtr h, int n);
   [DllImport("user32.dll", EntryPoint="GetWindowLongPtr", SetLastError=true)] static extern IntPtr GetWindowLongPtr64(IntPtr h, int n);
@@ -16,11 +17,15 @@ public static class FishTankNative {
   [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int key);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint flags);
+  [DllImport("kernel32.dll")] static extern IntPtr GetConsoleWindow();
+  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int command);
+  public static void HideConsole() { IntPtr h=GetConsoleWindow(); if(h!=IntPtr.Zero) ShowWindow(h,0); }
   public static long GetStyle(IntPtr h, int n) { return IntPtr.Size == 8 ? GetWindowLongPtr64(h,n).ToInt64() : GetWindowLong32(h,n); }
   public static void SetStyle(IntPtr h, int n, long v) { if (IntPtr.Size == 8) SetWindowLongPtr64(h,n,new IntPtr(v)); else SetWindowLong32(h,n,(int)v); }
 }
 '@
 Add-Type -TypeDefinition $native
+[FishTankNative]::HideConsole()
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Fish Tank'
@@ -35,19 +40,22 @@ $form.TransparencyKey = $form.BackColor
 $form.KeyPreview = $true
 
 $tank = New-Object System.Windows.Forms.Panel
+try{$doubleBufferProperty=$tank.GetType().GetProperty('DoubleBuffered',[System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic);if($doubleBufferProperty){$doubleBufferProperty.SetValue($tank,$true,$null)}}catch{}
 $tank.Dock = [System.Windows.Forms.DockStyle]::Fill
 $tank.BackColor = $form.TransparencyKey
 $form.Controls.Add($tank)
 $screenSampleBitmap=New-Object System.Drawing.Bitmap(1,1)
 $screenSampleGraphics=[System.Drawing.Graphics]::FromImage($screenSampleBitmap)
 
-$state = [pscustomobject]@{ X=260.0; Y=120.0; Direction=1; Phase=0.0; Speed=3.2; Angle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Follow=$false; TypingForcedFollow=$false; WindowedBounds=[System.Drawing.Rectangle]::Empty; TextFocused=$false; LastFocusCheck=[datetime]::MinValue; KeepAwake=$true; Tilt=$true; ClickThrough=$false; IsDragging=$false; DraggingFishIndex=-1; FishCount=1; FishHidden=$false; HomeWasDown=$false; CarrierIndex=0; StealTurnsRemaining=0; PongActive=$false; PongVX=0.0; PongVY=0.0; PongHits=0; PongHitLimit=0; PongEndsAt=[datetime]::MinValue; PongLastHitIndex=1; PongMode=$false; PongOnly=$false; PongPasses=0; Physics=$false; VelX=0.0; VelY=0.0; DragAt=[datetime]::UtcNow; PinnedCorner=$false; Stealing=$false; StealPhase=''; TypingSteal=$false; TypingGrabEnabled=$true; LastTypingAt=[datetime]::MinValue; StealOriginX=0; StealOriginY=0; StealEnabled=$true; StealChance=5; StealUntil=[datetime]::MinValue; StealTargetX=0.0; StealTargetY=0.0; EndWasDown=$false; InsertWasDown=$false; DeleteWasDown=$false; BlubUntil=[datetime]::MinValue; NextBlub=[datetime]::UtcNow.AddSeconds(8); DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0; DragAxis=''; DragDir=0; DragLeg=0.0; DragPath=0.0; DragMin=0.0; DragMax=0.0; DragReversals=0; DragStarted=[datetime]::MinValue; AngryUntil=[datetime]::MinValue; LastLoc=$form.Location; LastMove=[datetime]::MinValue; WindowDragging=$false; WindowPhysics=$false; WindowVelX=0.0; WindowVelY=0.0; WindowBounds=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; WindowAt=[datetime]::UtcNow; ShakeAxis=''; ShakeDir=0; ShakeLeg=0.0; ShakePath=0.0; ShakeMin=0; ShakeMax=0; ShakeReversals=0; ShakeStarted=[datetime]::MinValue; LastCursor=[System.Windows.Forms.Cursor]::Position; CursorStillSince=[datetime]::UtcNow }
-$makeFish = { param($x,$y,$speed) [pscustomobject]@{ X=[double]$x; Y=[double]$y; Direction=1; Angle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Speed=[double]$speed; Dragging=$false; DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0 } }
+$state = [pscustomobject]@{ X=260.0; Y=120.0; Direction=1; Phase=0.0; Speed=3.2; Angle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Follow=$false; TypingForcedFollow=$false; WindowedBounds=[System.Drawing.Rectangle]::Empty; TextFocused=$false; LastFocusCheck=[datetime]::MinValue; KeepAwake=$true; KeepAwakeRefresh=[datetime]::MinValue; RocketLeaguePaused=$false; RocketLeaguePauseStarted=[datetime]::MinValue; LastRocketLeagueCheck=[datetime]::MinValue; Tilt=$true; ClickThrough=$false; IsDragging=$false; DraggingFishIndex=-1; FishCount=1; FishHidden=$false; HomeWasDown=$false; CarrierIndex=0; StealTurnsRemaining=0; PongActive=$false; PongVX=0.0; PongVY=0.0; PongHits=0; PongScoreLeft=0; PongScoreRight=0; PongHitLimit=0; PongEndsAt=[datetime]::MinValue; PongLastHitIndex=1; PongMode=$false; PongOnly=$false; PongPasses=0; Physics=$false; VelX=0.0; VelY=0.0; DragAt=[datetime]::UtcNow; PinnedCorner=$false; Stealing=$false; StealPhase=''; TypingSteal=$false; TypingGrabEnabled=$true; TypingSuppressedUntil=[datetime]::MinValue; LastTypingAt=[datetime]::MinValue; StealOriginX=0; StealOriginY=0; StealEnabled=$true; StealChance=5; StealUntil=[datetime]::MinValue; StealTargetX=0.0; StealTargetY=0.0; EndWasDown=$false; InsertWasDown=$false; DeleteWasDown=$false; BlubUntil=[datetime]::MinValue; NextBlub=[datetime]::UtcNow.AddSeconds(8); DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0; DragAxis=''; DragDir=0; DragLeg=0.0; DragPath=0.0; DragMin=0.0; DragMax=0.0; DragReversals=0; DragStarted=[datetime]::MinValue; AngryUntil=[datetime]::MinValue; LastLoc=$form.Location; LastMove=[datetime]::MinValue; WindowDragging=$false; WindowPhysics=$false; WindowVelX=0.0; WindowVelY=0.0; WindowBounds=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; WindowAt=[datetime]::UtcNow; ShakeAxis=''; ShakeDir=0; ShakeLeg=0.0; ShakePath=0.0; ShakeMin=0; ShakeMax=0; ShakeReversals=0; ShakeStarted=[datetime]::MinValue; LastCursor=[System.Windows.Forms.Cursor]::Position; CursorStillSince=[datetime]::UtcNow }
+$makeFish = { param($x,$y,$speed) [pscustomobject]@{ X=[double]$x; Y=[double]$y; Direction=1; Angle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Speed=[double]$speed; Dragging=$false; BlubUntil=[datetime]::MinValue; NextBlub=[datetime]::MinValue; AngryUntil=[datetime]::MinValue; DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0 } }
 $buddy = & $makeFish 400 230 2.8
 $fish3 = & $makeFish 180 260 2.5
 $fish4 = & $makeFish 340 80 2.6
 $fishies=@($state,$buddy,$fish3,$fish4)
 $rng = New-Object System.Random
+for($i=$fishies.Count;$i -lt 100;$i++){$extraFish=& $makeFish (30+$rng.NextDouble()*520) (30+$rng.NextDouble()*310) (2.3+$rng.NextDouble()*1.0);$fishies+=,$extraFish}
+for($i=0;$i -lt $fishies.Count;$i++){$fishies[$i].NextBlub=[datetime]::UtcNow.AddSeconds(2+($i*1.6)+$rng.NextDouble()*3)}
 $pickRoamTarget = {
   $left=24.0; $right=[Math]::Max($left+1,$tank.ClientSize.Width-118.0)
   $top=24.0; $bottom=[Math]::Max($top+1,$tank.ClientSize.Height-58.0)
@@ -79,7 +87,7 @@ $startPongGame = {
   $state.X=$leftCenter-43;$state.Y=$middleY-14;$state.Heading=0.0;$state.Direction=1;$state.Angle=0.0;$state.Dragging=$false
   $buddy.X=$rightCenter-43;$buddy.Y=$middleY-14;$buddy.Heading=[Math]::PI;$buddy.Direction=-1;$buddy.Angle=0.0;$buddy.Dragging=$false
   $state.Stealing=$false;$state.StealPhase='';$state.IsDragging=$false;$state.Physics=$false;$state.PinnedCorner=$false;$state.PongMode=$false;$state.PongOnly=$false
-  $state.PongActive=$true;$state.PongHits=0;$state.PongHitLimit=0;$state.PongEndsAt=[datetime]::MaxValue;$state.PongLastHitIndex=1
+  $state.PongActive=$true;$state.PongHits=0;$state.PongScoreLeft=0;$state.PongScoreRight=0;$state.PongHitLimit=0;$state.PongEndsAt=[datetime]::MaxValue;$state.PongLastHitIndex=1
   $ballX=($leftCenter+$rightCenter)/2;$ballY=$middleY
   $state.PongVX=-6.0;$state.PongVY=($rng.NextDouble()-0.5)*2.2
   $origin=$tank.PointToScreen([System.Drawing.Point]::Empty);$px=[int]($origin.X+$ballX);$py=[int]($origin.Y+$ballY)
@@ -161,7 +169,7 @@ foreach($pct in 5..50 | Where-Object { $_ % 5 -eq 0 }) {
 }
 $fishCountMenu=New-Object System.Windows.Forms.ToolStripMenuItem('Number of fish')
 $fishCountItems=@()
-foreach($count in 1..4){
+foreach($count in 1..100){
   $countItem=New-Object System.Windows.Forms.ToolStripMenuItem("$count fish")
   $countItem.Tag=$count;$countItem.Checked=($count -eq 1)
   [void]$fishCountMenu.DropDownItems.Add($countItem);$fishCountItems+=$countItem
@@ -185,7 +193,7 @@ $tray.ContextMenuStrip = $menu
 $tray.Visible = $true
 $tray.Add_Click({ if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) { $menu.Show([System.Windows.Forms.Cursor]::Position) } })
 $exitItem.Add_Click({ $form.Close() })
-$applyKeepAwake = { if($state.KeepAwake){[FishTankNative]::SetThreadExecutionState([uint32]2147483649) | Out-Null}else{[FishTankNative]::SetThreadExecutionState([uint32]2147483648) | Out-Null} }
+$applyKeepAwake = { if($state.KeepAwake){[FishTankNative]::SetThreadExecutionState([uint32]2147483651) | Out-Null;$state.KeepAwakeRefresh=[datetime]::UtcNow}else{[FishTankNative]::SetThreadExecutionState([uint32]2147483648) | Out-Null;$state.KeepAwakeRefresh=[datetime]::MinValue} }
 $awakeItem.Add_Click({$awakeItem.Checked=-not $awakeItem.Checked;$state.KeepAwake=$awakeItem.Checked;& $applyKeepAwake})
 $tiltItem.Add_Click({ $state.Tilt = $tiltItem.Checked = -not $tiltItem.Checked })
 $ambienceItem.Add_Click({ $ambienceItem.Checked = -not $ambienceItem.Checked; $tank.Invalidate() })
@@ -246,48 +254,45 @@ $followItem.Add_Click({
 
 $tank.Add_Paint({
   param($sender,$e)
-  $g=$e.Graphics; $g.SmoothingMode=[System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $g=$e.Graphics;$g.Clear($form.TransparencyKey);$g.SmoothingMode=[System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
   $w=$sender.ClientSize.Width; $h=$sender.ClientSize.Height
   # Draw every selected fish with contrast sampled from the desktop behind it.
   if ($ambienceItem.Checked) {
     # Fine bubbles and soft glints drift gently through the transparent water.
+    $p=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(95,205,205,205),1)
     for($i=0;$i -lt 7;$i++) {
       $bx=[single](($i*137 + $state.Phase*(9+$i*2)) % [Math]::Max(1,$w))
       $by=[single]($h - (($state.Phase*(12+$i)+$i*53) % [Math]::Max(1,$h)))
       $r=3+($i%3)
-      $p=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(95,205,205,205),1)
-      $g.DrawEllipse($p,$bx,$by,$r,$r); $p.Dispose()
+      $g.DrawEllipse($p,$bx,$by,$r,$r)
     }
+    $p.Dispose()
     $glint=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(85,224,224,224))
     for($i=0;$i -lt 4;$i++) { $x=[single](($i*179+$state.Phase*4)%[Math]::Max(1,$w)); $y=[single]($h-14-(($i*61)%[Math]::Max(1,$h-20))); $g.FillEllipse($glint,$x,$y,2,2) }
     $glint.Dispose()
   }
   $fishFontSize=14
   $fishFont=New-Object System.Drawing.Font('Consolas',$fishFontSize,[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel)
+  $fishBrush=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+  $angerFont=New-Object System.Drawing.Font('Consolas',15,[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel)
+  $angerBrush=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::OrangeRed)
+  $blubFont=New-Object System.Drawing.Font('Segoe UI',10,[System.Drawing.FontStyle]::Bold)
+  $blubBrush=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(190,255,255,255))
   for($fishIndex=0;$fishIndex -lt $state.FishCount;$fishIndex++){
     if($state.FishHidden){break}
     $fish=$fishies[$fishIndex];$fishInk=[System.Drawing.Color]::White
-    try {
-      $sampleAngle=$fish.Angle*[Math]::PI/180.0;$perpX=-[Math]::Sin($sampleAngle)*52;$perpY=[Math]::Cos($sampleAngle)*52
-      $luminance=0.0;$sampleCount=0
-      foreach($side in @(1,-1)){
-        $sample=$tank.PointToScreen((New-Object System.Drawing.Point([int]($fish.X+43+$perpX*$side),[int]($fish.Y+14+$perpY*$side))))
-        $visible=$false;foreach($monitor in [System.Windows.Forms.Screen]::AllScreens){if($monitor.Bounds.Contains($sample)){$visible=$true;break}}
-        if($visible){$screenSampleGraphics.CopyFromScreen($sample,[System.Drawing.Point]::Empty,(New-Object System.Drawing.Size(1,1)));$pixel=$screenSampleBitmap.GetPixel(0,0);$luminance+=0.2126*$pixel.R+0.7152*$pixel.G+0.0722*$pixel.B;$sampleCount++}
-      }
-      if($sampleCount -gt 0 -and ($luminance/$sampleCount) -ge 128){$fishInk=[System.Drawing.Color]::Black}
-    } catch { $fishInk=[System.Drawing.Color]::White }
-    $fishBrush=New-Object System.Drawing.SolidBrush($fishInk)
+
     $fishText='<o))><';if($fish.Direction -gt 0){$fishText='><((o>'}
     $cx=[single]($fish.X+43);$cy=[single]($fish.Y+14)
     $drawX=[single]($fish.X+18);$drawY=[single]($fish.Y+7)
     $g.TranslateTransform($cx,$cy)
     if(-not $state.Follow -or $state.Tilt -or ($fishIndex -eq 0 -and $state.PinnedCorner)){$g.RotateTransform([single]$fish.Angle)}
-    $g.TranslateTransform(-$cx,-$cy);$g.DrawString($fishText,$fishFont,$fishBrush,$drawX,$drawY);$g.ResetTransform();$fishBrush.Dispose()
-    if($fishIndex -eq 0 -and [datetime]::UtcNow -lt $state.AngryUntil){$angerFont=New-Object System.Drawing.Font('Consolas',15,[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel);$angerBrush=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::OrangeRed);$g.DrawString('!!',$angerFont,$angerBrush,[single]($fish.X+54),[single]($fish.Y-5));$angerFont.Dispose();$angerBrush.Dispose()}
-    if($fishIndex -eq 0 -and [datetime]::UtcNow -lt $state.BlubUntil){$blubFont=New-Object System.Drawing.Font('Segoe UI',10,[System.Drawing.FontStyle]::Bold);$blubBrush=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(190,$fishInk.R,$fishInk.G,$fishInk.B));$g.DrawString('blub blub',$blubFont,$blubBrush,[single]($fish.X+20),[single]([Math]::Max(2,$fish.Y-19)));$blubFont.Dispose();$blubBrush.Dispose()}
+    $g.TranslateTransform(-$cx,-$cy);$g.DrawString($fishText,$fishFont,$fishBrush,$drawX,$drawY);$g.ResetTransform()
+    if([datetime]::UtcNow -lt $fish.AngryUntil){$g.DrawString('!!',$angerFont,$angerBrush,[single]($fish.X+54),[single]($fish.Y-5))}
+    if([datetime]::UtcNow -lt $fish.BlubUntil){$g.DrawString('blub blub',$blubFont,$blubBrush,[single]($fish.X+20),[single]([Math]::Max(2,$fish.Y-19)))}
   }
-  $fishFont.Dispose()
+  $fishFont.Dispose();$fishBrush.Dispose();$angerFont.Dispose();$angerBrush.Dispose();$blubFont.Dispose();$blubBrush.Dispose()
+  if($state.PongActive){$scoreFont=New-Object System.Drawing.Font('Consolas',15,[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel);$scoreBrush=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White);$scoreText="PONG  $($state.PongScoreLeft) : $($state.PongScoreRight)";$scoreSize=$g.MeasureString($scoreText,$scoreFont);$g.DrawString($scoreText,$scoreFont,$scoreBrush,[single](($w-$scoreSize.Width)/2),[single]($h-$scoreSize.Height-5));$scoreFont.Dispose();$scoreBrush.Dispose()}
 })
 
 # The transparent canvas lets clicks pass through; the fish glyph itself remains draggable.
@@ -375,6 +380,17 @@ $tank.Add_MouseUp({
 
 $timer.Add_Tick({
   $now=[datetime]::UtcNow;$stealJustFinished=$false
+  if(($now-$state.LastRocketLeagueCheck).TotalSeconds -ge 1){
+    $state.LastRocketLeagueCheck=$now;$rocketLeagueOpen=[bool](Get-Process -Name 'RocketLeague' -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if($rocketLeagueOpen -and -not $state.RocketLeaguePaused){$state.RocketLeaguePaused=$true;$state.RocketLeaguePauseStarted=$now}
+    elseif(-not $rocketLeagueOpen -and $state.RocketLeaguePaused){
+      $pausedFor=$now-$state.RocketLeaguePauseStarted
+      foreach($pausedFish in $fishies){$pausedFish.NextBlub=$pausedFish.NextBlub.Add($pausedFor);if($pausedFish.BlubUntil -gt $state.RocketLeaguePauseStarted){$pausedFish.BlubUntil=$pausedFish.BlubUntil.Add($pausedFor)}}
+      $state.RocketLeaguePaused=$false;$state.RocketLeaguePauseStarted=[datetime]::MinValue;$state.LastCursor=[System.Windows.Forms.Cursor]::Position;$state.CursorStillSince=$now;$tank.Invalidate()
+    }
+  }
+  if($state.RocketLeaguePaused){$tank.Invalidate();return}
+  if($state.KeepAwake -and ($now-$state.KeepAwakeRefresh).TotalSeconds -ge 30){& $applyKeepAwake}
   if(($now-$state.LastFocusCheck).TotalMilliseconds -ge 200){
     $state.TextFocused=$false
     try {
@@ -383,8 +399,15 @@ $timer.Add_Tick({
     } catch { $state.TextFocused=$false }
     $state.LastFocusCheck=$now
   }
+  $winKeyDown=(([FishTankNative]::GetAsyncKeyState(0x5B) -band 0x8000) -ne 0 -or ([FishTankNative]::GetAsyncKeyState(0x5C) -band 0x8000) -ne 0)
+  $altKeyDown=(([FishTankNative]::GetAsyncKeyState(0x12) -band 0x8000) -ne 0 -or ([FishTankNative]::GetAsyncKeyState(0xA4) -band 0x8000) -ne 0 -or ([FishTankNative]::GetAsyncKeyState(0xA5) -band 0x8000) -ne 0)
+  $systemShortcutDown=$winKeyDown -or $altKeyDown
+  if($systemShortcutDown){
+    $state.TypingSuppressedUntil=$now.AddMilliseconds(650)
+    if($state.TypingSteal){$state.Stealing=$false;$state.StealPhase='';$state.TypingSteal=$false;$state.Physics=$false;$stealJustFinished=$true;if($state.TypingForcedFollow){$state.TypingForcedFollow=$false;$followItem.PerformClick()}}
+  }
   $typingNow=$false
-  if($state.TypingGrabEnabled){
+  if($state.TypingGrabEnabled -and $now -ge $state.TypingSuppressedUntil){
     $typingNow=$state.TextFocused
     foreach($vk in $typingKeys){if(([FishTankNative]::GetAsyncKeyState($vk) -band 0x8000) -ne 0){$typingNow=$true;break}}
   }
@@ -420,10 +443,13 @@ $timer.Add_Tick({
     else{$state.Stealing=$false;$state.StealPhase='';$state.Physics=$true;$state.VelX=[Math]::Cos($state.Heading)*680;$state.VelY=[Math]::Sin($state.Heading)*680;$state.AngryUntil=$now.AddSeconds(5);$stealJustFinished=$true}
   }
   $state.DeleteWasDown=$deleteDown
-  if($now -ge $state.NextBlub){
-    $state.BlubUntil=$now.AddSeconds(1.35);$state.NextBlub=$now.AddSeconds($rng.Next(8,19))
-    $blubPlayer.Play()
-    if($state.StealEnabled -and -not $state.PongActive -and $rng.Next(100) -lt $state.StealChance){& $startCursorSteal}
+  for($blubIndex=0;$blubIndex -lt $state.FishCount;$blubIndex++){
+    $blubFish=$fishies[$blubIndex]
+    if($now -ge $blubFish.NextBlub){
+      $blubFish.BlubUntil=$now.AddSeconds(1.35);$blubFish.NextBlub=$now.AddSeconds($rng.Next(8,19))
+      $blubPlayer.Play()
+      if($blubIndex -eq 0 -and $state.StealEnabled -and -not $state.PongActive -and $rng.Next(100) -lt $state.StealChance){& $startCursorSteal}
+    }
   }
   if($state.IsDragging -and (([System.Windows.Forms.Control]::MouseButtons -band [System.Windows.Forms.MouseButtons]::Left) -eq 0)){
     $state.IsDragging=$false; $tank.Capture=$false
@@ -446,12 +472,13 @@ $timer.Add_Tick({
     if($nextY -lt $topY){$nextY=$topY+($topY-$nextY);$state.PongVY=[Math]::Abs($state.PongVY)}elseif($nextY -gt $bottomY){$nextY=$bottomY-($nextY-$bottomY);$state.PongVY=-[Math]::Abs($state.PongVY)}
     # A missed paddle loses the point and serves again toward that side; the end walls never score as hits.
     $missedIndex=if($nextX -lt ($leftCenter-44)){0}elseif($nextX -gt ($rightCenter+44)){1}else{-1}
-    if($missedIndex -ge 0){$nextX=($leftCenter+$rightCenter)/2;$nextY=($topY+$bottomY)/2;$state.PongLastHitIndex=1-$missedIndex;$state.PongVX=if($missedIndex -eq 0){-6.0}else{6.0};$state.PongVY=($rng.NextDouble()-0.5)*2.2}
+    if($missedIndex -ge 0){if($missedIndex -eq 0){$state.PongScoreRight++}else{$state.PongScoreLeft++};$nextX=($leftCenter+$rightCenter)/2;$nextY=($topY+$bottomY)/2;$state.PongLastHitIndex=1-$missedIndex;$state.PongVX=if($missedIndex -eq 0){-6.0}else{6.0};$state.PongVY=($rng.NextDouble()-0.5)*2.2}
     # A body hit aims the cursor puck at the opposite paddle, with its vertical offset setting the rebound angle.
     for($i=0;$i -lt 2;$i++){
       if($i -eq $state.PongLastHitIndex){continue}
       $f=$fishies[$i];$paddleX=if($i -eq 0){$leftCenter}else{$rightCenter};$bodyX=$nextX-($f.X+43);$bodyY=$nextY-($f.Y+14)
       if([Math]::Abs($nextX-$paddleX) -le 8 -and [Math]::Abs($bodyY) -le 13){
+        if($rng.Next(100) -lt 5){$state.PongLastHitIndex=$i;continue}
         $verticalOffset=[Math]::Max(-1.0,[Math]::Min(1.0,$bodyY/13.0));$slope=$verticalOffset*0.78+($rng.NextDouble()-0.5)*0.82;$slope=[Math]::Max(-1.25,[Math]::Min(1.25,$slope));$speed=6.4+$rng.NextDouble()*2.3
         $outX=if($i -eq 0){1.0}else{-1.0};$normalizer=[Math]::Sqrt(1+$slope*$slope);$state.PongVX=$outX*$speed/$normalizer;$state.PongVY=$slope*$speed/$normalizer;$state.PongLastHitIndex=$i;$state.PongHits++
         break
@@ -484,7 +511,7 @@ $timer.Add_Tick({
       $mouthDx=$targetX-$mouthX;$mouthDy=$targetY-$mouthY
       $mouthDistance=[Math]::Sqrt($mouthDx*$mouthDx+$mouthDy*$mouthDy)
       if($mouthDistance -lt 18){
-        $state.StealPhase='Carrying';$state.StealUntil=$now.AddSeconds($(if($state.PongMode){1.25}else{10}));$state.AngryUntil=$now.AddSeconds(2)
+        $state.StealPhase='Carrying';$state.StealUntil=$now.AddSeconds($(if($state.PongMode){1.25}else{10}))
         & $pickStealTarget
       }
     } elseif($state.StealPhase -eq 'Carrying'){
@@ -547,12 +574,12 @@ $timer.Add_Tick({
     if($form.Bounds -ne $screen){$form.Bounds=$screen}
     $cursor=[System.Windows.Forms.Cursor]::Position
     if([Math]::Abs($cursor.X-$state.LastCursor.X)+[Math]::Abs($cursor.Y-$state.LastCursor.Y) -gt 3){$state.CursorStillSince=[datetime]::UtcNow;$state.LastCursor=$cursor}
-    $cursorMoving = ([datetime]::UtcNow-$state.CursorStillSince).TotalMilliseconds -le 600
+    $cursorMoving = ([datetime]::UtcNow-$state.CursorStillSince).TotalMilliseconds -le 500
     if($cursorMoving) {
       # While the user moves the pointer, swim toward it and keep looking at it.
       $tx=$cursor.X-$screen.Left; $ty=$cursor.Y-$screen.Top
-      $dx=$tx-($state.X+43); $dy=$ty-($state.Y+14)
-      $followStep=if([datetime]::UtcNow -lt $state.AngryUntil -or $state.Physics){12.0}else{5.0}
+      $followOffsetX=0;$followOffsetY=0;if($state.FishCount -eq 20){$followOffsetX=-36;$followOffsetY=-33};$dx=$tx+$followOffsetX-($state.X+43); $dy=$ty+$followOffsetY-($state.Y+14)
+      $followStep=if([datetime]::UtcNow -lt $state.AngryUntil -or $state.Physics){12.0}else{5.0};if($state.FishCount -eq 20 -and [Math]::Sqrt($dx*$dx+$dy*$dy) -lt 12){$followStep=0.0}
       $state.X += [Math]::Max(-$followStep,[Math]::Min($followStep,$dx*0.035))
       $state.Y += [Math]::Max(-$followStep,[Math]::Min($followStep,$dy*0.035))
       if([Math]::Abs($dx)+[Math]::Abs($dy) -gt 3){$state.Direction=if($dx -lt 0){-1}else{1}}
@@ -662,11 +689,12 @@ $timer.Add_Tick({
       if($state.Angle -gt 180){$state.Angle-=360}; if($state.Angle -lt -180){$state.Angle+=360}
     }
   }
-  for($i=1;$i -lt $state.FishCount;$i++){$f=$fishies[$i];if(-not $state.PongActive -and -not $f.Dragging){
+  for($angryIndex=1;$angryIndex -lt $state.FishCount;$angryIndex++){if($state.AngryUntil -gt $fishies[$angryIndex].AngryUntil){$fishies[$angryIndex].AngryUntil=$state.AngryUntil}}
+  for($i=1;$i -lt $state.FishCount;$i++){$f=$fishies[$i];$twentyFishCursorChase=($state.Follow -and $state.FishCount -eq 20 -and ([datetime]::UtcNow-$state.CursorStillSince).TotalMilliseconds -le 500);if($state.Follow -and $state.FishCount -eq 20){if($twentyFishCursorChase){$followOrigin=$tank.PointToScreen([System.Drawing.Point]::Empty);$followCursor=[System.Windows.Forms.Cursor]::Position;$f.TargetX=$followCursor.X-$followOrigin.X-43+(($i%5)-2)*18;$f.TargetY=$followCursor.Y-$followOrigin.Y-14+([Math]::Floor($i/5)-1.5)*22}else{$f.TargetX=0;$f.TargetY=0}};if(-not $state.PongActive -and -not $f.Dragging){
     $maxX=[Math]::Max(32,$tank.ClientSize.Width-105);$maxY=[Math]::Max(30,$tank.ClientSize.Height-48)
-    if($f.TargetX -le 0 -or [Math]::Sqrt([Math]::Pow($f.TargetX-$f.X,2)+[Math]::Pow($f.TargetY-$f.Y,2)) -lt 32){& $pickFishTarget $f}
+    if(-not $twentyFishCursorChase -and ($f.TargetX -le 0 -or [Math]::Sqrt([Math]::Pow($f.TargetX-$f.X,2)+[Math]::Pow($f.TargetY-$f.Y,2)) -lt 32)){& $pickFishTarget $f}
     $dx=$f.TargetX-$f.X;$dy=$f.TargetY-$f.Y;$desired=[Math]::Atan2($dy,$dx);$delta=[Math]::Atan2([Math]::Sin($desired-$f.Heading),[Math]::Cos($desired-$f.Heading))
-    $f.Heading += [Math]::Max(-0.07,[Math]::Min(0.07,$delta));$f.X += [Math]::Cos($f.Heading)*$f.Speed;$f.Y += [Math]::Sin($f.Heading)*$f.Speed
+    $f.Heading += [Math]::Max(-0.07,[Math]::Min(0.07,$delta));$followSpeed=if([datetime]::UtcNow -lt $f.AngryUntil){$f.Speed*2.4}else{$f.Speed};if($twentyFishCursorChase -and [Math]::Sqrt($dx*$dx+$dy*$dy) -lt 12){$followSpeed=0.0};$f.X += [Math]::Cos($f.Heading)*$followSpeed;$f.Y += [Math]::Sin($f.Heading)*$followSpeed
     $f.X=[Math]::Max(5,[Math]::Min($tank.ClientSize.Width-92,$f.X));$f.Y=[Math]::Max(30,[Math]::Min($tank.ClientSize.Height-60,$f.Y))
     if($f.X -le 5 -or $f.X -ge $tank.ClientSize.Width-92 -or $f.Y -le 30 -or $f.Y -ge $tank.ClientSize.Height-60){& $pickFishTarget $f}
     $f.Direction=if([Math]::Cos($f.Heading) -lt 0){-1}else{1};$f.Angle=[Math]::Atan2([Math]::Sin($f.Heading),[Math]::Cos($f.Heading))*180/[Math]::PI
@@ -681,11 +709,13 @@ $form.Add_Shown({
   if($state.ClickThrough){$style=$style -bor 0x20}
   if($state.ClickThrough){$style=$style -bor 0x8000000}
   [FishTankNative]::SetStyle($form.Handle,-20,$style)
-  if($state.KeepAwake){[FishTankNative]::SetThreadExecutionState([uint32]2147483649) | Out-Null}
+  if($state.KeepAwake){& $applyKeepAwake}
   & $pickRoamTarget
   foreach($f in $fishies[1..3]){$f.X=[Math]::Max(18,[Math]::Min($tank.ClientSize.Width-105,$f.X));$f.Y=[Math]::Max(18,[Math]::Min($tank.ClientSize.Height-48,$f.Y));& $pickFishTarget $f}
   $timer.Start()
 })
 $form.Add_FormClosed({ [FishTankNative]::SetThreadExecutionState([uint32]2147483648) | Out-Null;$timer.Stop();$timer.Dispose();$tray.Visible=$false;$tray.Dispose();$menu.Dispose();$blubPlayer.Stop();$blubPlayer.Dispose();$blubStream.Dispose();$writer.Dispose();$wav.Dispose();$screenSampleGraphics.Dispose();$screenSampleBitmap.Dispose() })
 [void]$form.ShowDialog()
+
+
 

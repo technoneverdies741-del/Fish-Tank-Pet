@@ -271,8 +271,11 @@ $download=[System.Text.Encoding]::UTF8.GetString($downloadBytes).TrimStart([char
     $parseTokens=$null;$parseErrors=$null
     [System.Management.Automation.Language.Parser]::ParseFile($tempPath,[ref]$parseTokens,[ref]$parseErrors)|Out-Null
     if($parseErrors.Count -gt 0){Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue;throw 'The downloaded update did not pass the PowerShell syntax check.'}
-    $currentHash=(Get-FileHash -LiteralPath $installedPath -Algorithm SHA256).Hash
-    $latestHash=(Get-FileHash -LiteralPath $tempPath -Algorithm SHA256).Hash
+        $sha=[System.Security.Cryptography.SHA256]::Create()
+    try {
+      $currentHash=[Convert]::ToBase64String($sha.ComputeHash([System.IO.File]::ReadAllBytes($installedPath)))
+      $latestHash=[Convert]::ToBase64String($sha.ComputeHash([System.IO.File]::ReadAllBytes($tempPath)))
+    } finally { $sha.Dispose() }
     if($currentHash -eq $latestHash){Remove-Item -LiteralPath $tempPath -Force;[void][System.Windows.Forms.MessageBox]::Show('Fish Tank is already up to date.','Fish Tank updates',[System.Windows.Forms.MessageBoxButtons]::OK,[System.Windows.Forms.MessageBoxIcon]::Information)}
     else {
       $backupPath=$installedPath+'.previous'

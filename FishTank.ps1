@@ -243,8 +243,9 @@ $hatColorItem.Add_Click({if($hatColorDialog.ShowDialog($form) -eq [System.Window
 [void]$hatStyleMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 [void]$hatStyleMenu.DropDownItems.Add($hatColorItem)
 $playPongItem=New-Object System.Windows.Forms.ToolStripMenuItem('Toggle cursor pong (Insert; uses 2 fish)')
+$updateItem = New-Object System.Windows.Forms.ToolStripMenuItem('Check for updates')
 $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem('Quit Fish Tank')
-[void]$menu.Items.Add($awakeItem); [void]$menu.Items.Add($followItem); [void]$menu.Items.Add($clickItem); [void]$menu.Items.Add($tiltItem); [void]$menu.Items.Add($ambienceItem); [void]$menu.Items.Add($fishColorItem); [void]$menu.Items.Add($hatStyleMenu); [void]$menu.Items.Add($typingGrabItem); [void]$menu.Items.Add($mischiefItem); [void]$menu.Items.Add($chanceMenu); [void]$menu.Items.Add($fishCountMenu); [void]$menu.Items.Add($breedItem); [void]$menu.Items.Add($playPongItem)
+[void]$menu.Items.Add($awakeItem); [void]$menu.Items.Add($followItem); [void]$menu.Items.Add($clickItem); [void]$menu.Items.Add($tiltItem); [void]$menu.Items.Add($ambienceItem); [void]$menu.Items.Add($fishColorItem); [void]$menu.Items.Add($hatStyleMenu); [void]$menu.Items.Add($typingGrabItem); [void]$menu.Items.Add($mischiefItem); [void]$menu.Items.Add($chanceMenu); [void]$menu.Items.Add($fishCountMenu); [void]$menu.Items.Add($breedItem); [void]$menu.Items.Add($playPongItem); [void]$menu.Items.Add($updateItem)
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)); [void]$menu.Items.Add($exitItem)
 $tray = New-Object System.Windows.Forms.NotifyIcon
 $tray.Text = 'Fish Tank settings'
@@ -252,6 +253,44 @@ $tray.Icon = [System.Drawing.SystemIcons]::Information
 $tray.ContextMenuStrip = $menu
 $tray.Visible = $true
 $tray.Add_Click({ if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) { $menu.Show([System.Windows.Forms.Cursor]::Position) } })
+$updateItem.Add_Click({
+  $updateItem.Enabled=$false
+  $updateItem.Text='Checking for updates…'
+  try {
+    $installedPath=Join-Path $env:LOCALAPPDATA 'FishTankPet\FishTank.ps1'
+    if(-not (Test-Path -LiteralPath $installedPath)){$installedPath=$PSCommandPath}
+    $latestUri='https://raw.githubusercontent.com/technoneverdies741-del/Fish-Tank-Pet/main/FishTank.ps1'
+    $client=New-Object System.Net.WebClient
+    $client.Headers.Add('User-Agent','Fish-Tank-Updater')
+    $download=$client.DownloadString($latestUri)
+    if([string]::IsNullOrWhiteSpace($download) -or $download.Length -lt 1000){throw 'The update download was empty or incomplete.'}
+    $tempPath=$installedPath+'.update-'+[guid]::NewGuid().ToString('N')+'.ps1'
+    [System.IO.File]::WriteAllText($tempPath,$download,(New-Object System.Text.UTF8Encoding($false)))
+    $parseTokens=$null;$parseErrors=$null
+    [System.Management.Automation.Language.Parser]::ParseFile($tempPath,[ref]$parseTokens,[ref]$parseErrors)|Out-Null
+    if($parseErrors.Count -gt 0){Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue;throw 'The downloaded update did not pass the PowerShell syntax check.'}
+    $currentHash=(Get-FileHash -LiteralPath $installedPath -Algorithm SHA256).Hash
+    $latestHash=(Get-FileHash -LiteralPath $tempPath -Algorithm SHA256).Hash
+    if($currentHash -eq $latestHash){Remove-Item -LiteralPath $tempPath -Force;[void][System.Windows.Forms.MessageBox]::Show('Fish Tank is already up to date.','Fish Tank updates',[System.Windows.Forms.MessageBoxButtons]::OK,[System.Windows.Forms.MessageBoxIcon]::Information)}
+    else {
+      $backupPath=$installedPath+'.previous'
+      Copy-Item -LiteralPath $installedPath -Destination $backupPath -Force
+      try { Move-Item -LiteralPath $tempPath -Destination $installedPath -Force }
+      catch { Copy-Item -LiteralPath $backupPath -Destination $installedPath -Force;throw }
+      $launch=New-Object System.Diagnostics.ProcessStartInfo
+      $launch.FileName=(Join-Path $PSHOME 'powershell.exe')
+      $launch.Arguments='-NoProfile -ExecutionPolicy Bypass -File "'+$installedPath+'"'
+      $launch.UseShellExecute=$false
+      [System.Diagnostics.Process]::Start($launch)|Out-Null
+      $form.Close()
+    }
+  } catch {
+    [void][System.Windows.Forms.MessageBox]::Show("Fish Tank couldn't check for or install an update:`r`n$($_.Exception.Message)",'Fish Tank updates',[System.Windows.Forms.MessageBoxButtons]::OK,[System.Windows.Forms.MessageBoxIcon]::Error)
+  } finally {
+    $updateItem.Enabled=$true
+    $updateItem.Text='Check for updates'
+  }
+})
 $exitItem.Add_Click({ $form.Close() })
 $applyKeepAwake = { if($state.KeepAwake){[FishTankNative]::SetThreadExecutionState([uint32]2147483651) | Out-Null;$state.KeepAwakeRefresh=[datetime]::UtcNow}else{[FishTankNative]::SetThreadExecutionState([uint32]2147483648) | Out-Null;$state.KeepAwakeRefresh=[datetime]::MinValue} }
 $awakeItem.Add_Click({$awakeItem.Checked=-not $awakeItem.Checked;$state.KeepAwake=$awakeItem.Checked;& $applyKeepAwake})

@@ -48,6 +48,7 @@ $screenSampleBitmap=New-Object System.Drawing.Bitmap(1,1)
 $screenSampleGraphics=[System.Drawing.Graphics]::FromImage($screenSampleBitmap)
 
 $state = [pscustomobject]@{ X=260.0; Y=120.0; Direction=1; Phase=0.0; Speed=3.2; Angle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Follow=$false; TypingForcedFollow=$false; WindowedBounds=[System.Drawing.Rectangle]::Empty; TextFocused=$false; LastFocusCheck=[datetime]::MinValue; KeepAwake=$true; KeepAwakeRefresh=[datetime]::MinValue; RocketLeaguePaused=$false; RocketLeaguePauseStarted=[datetime]::MinValue; LastRocketLeagueCheck=[datetime]::MinValue; Tilt=$true; ClickThrough=$false; IsDragging=$false; DraggingFishIndex=-1; FishCount=1; FishHidden=$false; HomeWasDown=$false; CarrierIndex=0; StealTurnsRemaining=0; PongActive=$false; PongVX=0.0; PongVY=0.0; PongHits=0; PongScoreLeft=0; PongScoreRight=0; PongHitLimit=0; PongEndsAt=[datetime]::MinValue; PongLastHitIndex=1; PongMode=$false; PongOnly=$false; PongPasses=0; Physics=$false; VelX=0.0; VelY=0.0; DragAt=[datetime]::UtcNow; PinnedCorner=$false; Stealing=$false; StealPhase=''; TypingSteal=$false; TypingGrabEnabled=$true; TypingSuppressedUntil=[datetime]::MinValue; LastTypingAt=[datetime]::MinValue; StealOriginX=0; StealOriginY=0; StealEnabled=$true; StealChance=5; StealUntil=[datetime]::MinValue; StealTargetX=0.0; StealTargetY=0.0; EndWasDown=$false; InsertWasDown=$false; DeleteWasDown=$false; BlubUntil=[datetime]::MinValue; NextBlub=[datetime]::UtcNow.AddSeconds(8); DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0; DragAxis=''; DragDir=0; DragLeg=0.0; DragPath=0.0; DragMin=0.0; DragMax=0.0; DragReversals=0; DragStarted=[datetime]::MinValue; AngryUntil=[datetime]::MinValue; LastLoc=$form.Location; LastMove=[datetime]::MinValue; WindowDragging=$false; WindowPhysics=$false; WindowVelX=0.0; WindowVelY=0.0; WindowBounds=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; WindowAt=[datetime]::UtcNow; ShakeAxis=''; ShakeDir=0; ShakeLeg=0.0; ShakePath=0.0; ShakeMin=0; ShakeMax=0; ShakeReversals=0; ShakeStarted=[datetime]::MinValue; LastCursor=[System.Windows.Forms.Cursor]::Position; CursorStillSince=[datetime]::UtcNow }
+$state | Add-Member -NotePropertyName Dragging -NotePropertyValue $false
 $state | Add-Member -NotePropertyName FishColor -NotePropertyValue ([System.Drawing.Color]::White)
 $state | Add-Member -NotePropertyName HatsEnabled -NotePropertyValue $true
 $state | Add-Member -NotePropertyName HatStyle -NotePropertyValue 'Traffic cone'
@@ -262,7 +263,8 @@ $updateItem.Add_Click({
     $latestUri='https://raw.githubusercontent.com/technoneverdies741-del/Fish-Tank-Pet/main/FishTank.ps1'
     $client=New-Object System.Net.WebClient
     $client.Headers.Add('User-Agent','Fish-Tank-Updater')
-    $download=$client.DownloadString($latestUri)
+    $downloadBytes=$client.DownloadData($latestUri)
+$download=[System.Text.Encoding]::UTF8.GetString($downloadBytes).TrimStart([char]0xFEFF)
     if([string]::IsNullOrWhiteSpace($download) -or $download.Length -lt 1000){throw 'The update download was empty or incomplete.'}
     $tempPath=$installedPath+'.update-'+[guid]::NewGuid().ToString('N')+'.ps1'
     [System.IO.File]::WriteAllText($tempPath,$download,(New-Object System.Text.UTF8Encoding($false)))

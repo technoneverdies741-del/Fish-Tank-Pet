@@ -26,7 +26,7 @@ public static class FishTankNative {
 '@
 Add-Type -TypeDefinition $native
 [FishTankNative]::HideConsole()
-$script:FishTankVersion='23'
+$script:FishTankVersion='24'
 $script:FishTankInstallFolder=Join-Path $env:LOCALAPPDATA 'FishTankPet'
 $script:PendingWhatsNewPath=Join-Path $script:FishTankInstallFolder 'whats-new.pending'
 $script:FishTankReleaseNotes=@(
@@ -37,7 +37,8 @@ $script:FishTankReleaseNotes=@(
   'Map Pong, cursor mischief, and fish-count controls to keys your keyboard has.',
   'The new-stuff page also appears after updating from older app versions.',
   'The restore picker now loads every saved source revision from v1 through v22.',
-  'Keyboard shortcut choices populate correctly in the settings panel.'
+  'Keyboard shortcut choices populate correctly in the settings panel.',
+  'The fish hide/show key can be remapped too.'
 )
 $script:FishStyleChoices=@(
   [pscustomobject]@{Name='Classic';Left='<o))><';Right='><((o>'},
@@ -88,6 +89,7 @@ $state | Add-Member -NotePropertyName DeleteKeyVK -NotePropertyValue 0x2E
 $state | Add-Member -NotePropertyName EndKeyVK -NotePropertyValue 0x23
 $state | Add-Member -NotePropertyName PageUpKeyVK -NotePropertyValue 0x21
 $state | Add-Member -NotePropertyName PageDownKeyVK -NotePropertyValue 0x22
+$state | Add-Member -NotePropertyName HomeKeyVK -NotePropertyValue 0x24
 $backgroundOverlay=New-Object System.Windows.Forms.Form
 $backgroundOverlay.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::None
 $backgroundOverlay.ShowInTaskbar=$false
@@ -393,12 +395,12 @@ $script:HotkeyDigits=@(foreach($digitValue in 0..9){[string]$digitValue})
 $script:HotkeyChoiceNames=@('None','Insert','Delete','End','Page Up','Page Down','Home','Space','Tab','Escape')+@('F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12')+$script:HotkeyLetters+$script:HotkeyDigits
 $keyboardShortcutsItem=New-Object System.Windows.Forms.ToolStripMenuItem('Keyboard shortcuts…')
 $keyboardShortcutsItem.Add_Click({
-  $shortcutDialog=New-Object System.Windows.Forms.Form;$shortcutDialog.Text='Keyboard shortcuts';$shortcutDialog.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::FixedDialog;$shortcutDialog.StartPosition=[System.Windows.Forms.FormStartPosition]::CenterParent;$shortcutDialog.ClientSize=New-Object System.Drawing.Size(360,244);$shortcutDialog.MaximizeBox=$false;$shortcutDialog.MinimizeBox=$false;$shortcutDialog.ShowInTaskbar=$false
-  $shortcutRows=@(@('Toggle Pong','InsertKeyVK'),@('Cursor mischief','EndKeyVK'),@('Kick fish off cursor','DeleteKeyVK'),@('Add fish','PageUpKeyVK'),@('Remove fish','PageDownKeyVK'));$shortcutCombos=@();$rowIndex=0
+  $shortcutDialog=New-Object System.Windows.Forms.Form;$shortcutDialog.Text='Keyboard shortcuts';$shortcutDialog.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::FixedDialog;$shortcutDialog.StartPosition=[System.Windows.Forms.FormStartPosition]::CenterParent;$shortcutDialog.ClientSize=New-Object System.Drawing.Size(360,280);$shortcutDialog.MaximizeBox=$false;$shortcutDialog.MinimizeBox=$false;$shortcutDialog.ShowInTaskbar=$false
+  $shortcutRows=@(@('Toggle Pong','InsertKeyVK'),@('Cursor mischief','EndKeyVK'),@('Kick fish off cursor','DeleteKeyVK'),@('Add fish','PageUpKeyVK'),@('Remove fish','PageDownKeyVK'),@('Hide/show fish','HomeKeyVK'));$shortcutCombos=@();$rowIndex=0
   foreach($row in $shortcutRows){$label=New-Object System.Windows.Forms.Label;$label.Text=$row[0];$label.Location=New-Object System.Drawing.Point(14,(14+$rowIndex*36));$label.AutoSize=$true;$combo=New-Object System.Windows.Forms.ComboBox;$combo.DropDownStyle=[System.Windows.Forms.ComboBoxStyle]::DropDownList;$combo.Location=New-Object System.Drawing.Point(185,(10+$rowIndex*36));$combo.Width=150;[void]$combo.Items.AddRange([object[]]$script:HotkeyChoiceNames);$currentVK=[int]$state.($row[1]);$currentName=($script:HotkeyCodes.GetEnumerator()|Where-Object{$_.Value -eq $currentVK}|Select-Object -First 1).Key;if(-not $currentName){$currentName='None'};$combo.SelectedItem=$currentName;[void]$shortcutDialog.Controls.Add($label);[void]$shortcutDialog.Controls.Add($combo);$shortcutCombos+=,$combo;$rowIndex++}
-  $shortcutHelp=New-Object System.Windows.Forms.Label;$shortcutHelp.Text='Choose any available key; avoid keys you type with.';$shortcutHelp.Location=New-Object System.Drawing.Point(14,194);$shortcutHelp.AutoSize=$true
-  $saveShortcuts=New-Object System.Windows.Forms.Button;$saveShortcuts.Text='Apply';$saveShortcuts.DialogResult=[System.Windows.Forms.DialogResult]::OK;$saveShortcuts.Location=New-Object System.Drawing.Point(252,214)
-  $cancelShortcuts=New-Object System.Windows.Forms.Button;$cancelShortcuts.Text='Cancel';$cancelShortcuts.DialogResult=[System.Windows.Forms.DialogResult]::Cancel;$cancelShortcuts.Location=New-Object System.Drawing.Point(168,214)
+  $shortcutHelp=New-Object System.Windows.Forms.Label;$shortcutHelp.Text='Choose any available key; avoid keys you type with.';$shortcutHelp.Location=New-Object System.Drawing.Point(14,230);$shortcutHelp.AutoSize=$true
+  $saveShortcuts=New-Object System.Windows.Forms.Button;$saveShortcuts.Text='Apply';$saveShortcuts.DialogResult=[System.Windows.Forms.DialogResult]::OK;$saveShortcuts.Location=New-Object System.Drawing.Point(252,250)
+  $cancelShortcuts=New-Object System.Windows.Forms.Button;$cancelShortcuts.Text='Cancel';$cancelShortcuts.DialogResult=[System.Windows.Forms.DialogResult]::Cancel;$cancelShortcuts.Location=New-Object System.Drawing.Point(168,250)
   [void]$shortcutDialog.Controls.Add($shortcutHelp);[void]$shortcutDialog.Controls.Add($saveShortcuts);[void]$shortcutDialog.Controls.Add($cancelShortcuts);$shortcutDialog.AcceptButton=$saveShortcuts;$shortcutDialog.CancelButton=$cancelShortcuts
   if($shortcutDialog.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK){for($i=0;$i -lt $shortcutRows.Count;$i++){$state.($shortcutRows[$i][1])=[int]$script:HotkeyCodes[[string]$shortcutCombos[$i].SelectedItem]}}
   $shortcutDialog.Dispose()
@@ -837,7 +839,7 @@ $timer.Add_Tick({
   $insertDown=($state.InsertKeyVK -ne 0 -and (([FishTankNative]::GetAsyncKeyState([int]$state.InsertKeyVK) -band 0x8000) -ne 0))
   if($insertDown -and -not $state.InsertWasDown){& $togglePong}
   $state.InsertWasDown=$insertDown
-  $homeDown=(([FishTankNative]::GetAsyncKeyState(0x24) -band 0x8000) -ne 0)
+  $homeDown=($state.HomeKeyVK -ne 0 -and (([FishTankNative]::GetAsyncKeyState([int]$state.HomeKeyVK) -band 0x8000) -ne 0))
   if($homeDown -and -not $state.HomeWasDown){
     $state.FishHidden=-not $state.FishHidden
     if($state.FishHidden -and $state.PongActive){$state.PongActive=$false;$state.PongMode=$false;$state.PongOnly=$false;$state.LastCursor=[System.Windows.Forms.Cursor]::Position;$state.CursorStillSince=$now}

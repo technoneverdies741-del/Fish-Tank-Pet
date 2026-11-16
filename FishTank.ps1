@@ -26,7 +26,7 @@ public static class FishTankNative {
 '@
 Add-Type -TypeDefinition $native
 [FishTankNative]::HideConsole()
-$script:FishTankVersion='21'
+$script:FishTankVersion='22'
 $script:FishTankInstallFolder=Join-Path $env:LOCALAPPDATA 'FishTankPet'
 $script:PendingWhatsNewPath=Join-Path $script:FishTankInstallFolder 'whats-new.pending'
 $script:FishTankReleaseNotes=@(
@@ -35,7 +35,8 @@ $script:FishTankReleaseNotes=@(
   'Fish swim across compact tanks instead of looping in place.',
   'Choose a different glyph style for each fish.',
   'Map Pong, cursor mischief, and fish-count controls to keys your keyboard has.',
-  'The new-stuff page also appears after updating from older app versions.'
+  'The new-stuff page also appears after updating from older app versions.',
+  'The restore picker now loads every saved source revision from v1 through v21.'
 )
 $script:FishStyleChoices=@(
   [pscustomobject]@{Name='Classic';Left='<o))><';Right='><((o>'},
@@ -452,7 +453,7 @@ $getVersionHistory={
   try{for($page=1;$page -le 50;$page++){$uri="https://api.github.com/repos/technoneverdies741-del/Fish-Tank-Pet/commits?path=FishTank.ps1&per_page=10&page=$page";$json=$client.DownloadString($uri);$pageItems=@($json|ConvertFrom-Json);if($pageItems.Count -eq 0){break};$allCommits+=@($pageItems);if($pageItems.Count -lt 10){break}}}finally{$client.Dispose()}
   if($allCommits.Count -eq 0){throw 'No published Fish Tank source versions were found.'}
   $versions=@();for($i=0;$i -lt $allCommits.Count;$i++){$commit=$allCommits[$i];$version=$allCommits.Count-$i;$message=(([string]$commit.commit.message -split "`r?`n")[0] -replace '\s+',' ').Trim();$versions+=,[pscustomobject]@{Version=$version;Sha=[string]$commit.sha;Message=$message;Label="v$version - $message"}}
-  return ,$versions
+  return $versions
 }
 $whatsNewItem.Add_Click({& $showWhatsNew})
 $restoreVersionItem.Add_Click({

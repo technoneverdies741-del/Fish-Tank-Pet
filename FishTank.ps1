@@ -26,6 +26,24 @@ public static class FishTankNative {
 '@
 Add-Type -TypeDefinition $native
 [FishTankNative]::HideConsole()
+$script:FishTankVersion='20'
+$script:FishTankInstallFolder=Join-Path $env:LOCALAPPDATA 'FishTankPet'
+$script:PendingWhatsNewPath=Join-Path $script:FishTankInstallFolder 'whats-new.pending'
+$script:FishTankReleaseNotes=@(
+  'Background water is blue with an adjustable transparency slider.',
+  'Fish, hats, and labels have thicker dark outlines for clear contrast.',
+  'Fish swim across compact tanks instead of looping in place.',
+  'Choose a different glyph style for each fish.',
+  'Map Pong, cursor mischief, and fish-count controls to keys your keyboard has.'
+)
+$script:FishStyleChoices=@(
+  [pscustomobject]@{Name='Classic';Left='<o))><';Right='><((o>'},
+  [pscustomobject]@{Name='Slim';Left='<><';Right='><>'},
+  [pscustomobject]@{Name='Goldfish';Left='<°))><';Right='><((°>'},
+  [pscustomobject]@{Name='Longfin';Left='<o))))><';Right='><((((o>'},
+  [pscustomobject]@{Name='Puffer';Left='<O))><';Right='><((O>'},
+  [pscustomobject]@{Name='Shark';Left='<°)))><';Right='><(((°>'}
+)
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Fish Tank'
@@ -35,7 +53,7 @@ $form.MinimumSize = New-Object System.Drawing.Size(300, 220)
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::Sizable
 $form.TopMost = $true
 $form.BackColor = [System.Drawing.Color]::FromArgb(18,18,18)
-$form.Opacity = 0.9
+$form.Opacity = 1.0
 $form.TransparencyKey = $form.BackColor
 $form.KeyPreview = $true
 
@@ -50,6 +68,8 @@ $screenSampleGraphics=[System.Drawing.Graphics]::FromImage($screenSampleBitmap)
 $state = [pscustomobject]@{ X=260.0; Y=120.0; Direction=1; Phase=0.0; Speed=3.2; Angle=0.0; LookAngle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Follow=$false; TypingForcedFollow=$false; WindowedBounds=[System.Drawing.Rectangle]::Empty; TextFocused=$false; LastFocusCheck=[datetime]::MinValue; KeepAwake=$true; KeepAwakeRefresh=[datetime]::MinValue; RocketLeaguePaused=$false; RocketLeaguePauseStarted=[datetime]::MinValue; LastRocketLeagueCheck=[datetime]::MinValue; Tilt=$true; ClickThrough=$false; IsDragging=$false; DraggingFishIndex=-1; FishCount=1; FishHidden=$false; HomeWasDown=$false; CarrierIndex=0; StealTurnsRemaining=0; PongActive=$false; PongVX=0.0; PongVY=0.0; PongHits=0; PongScoreLeft=0; PongScoreRight=0; PongHitLimit=0; PongEndsAt=[datetime]::MinValue; PongLastHitIndex=1; PongMode=$false; PongOnly=$false; PongPasses=0; Physics=$false; VelX=0.0; VelY=0.0; DragAt=[datetime]::UtcNow; PinnedCorner=$false; Stealing=$false; StealPhase=''; TypingSteal=$false; TypingGrabEnabled=$true; TypingSuppressedUntil=[datetime]::MinValue; LastTypingAt=[datetime]::MinValue; StealOriginX=0; StealOriginY=0; StealEnabled=$true; StealChance=5; StealUntil=[datetime]::MinValue; StealTargetX=0.0; StealTargetY=0.0; EndWasDown=$false; InsertWasDown=$false; DeleteWasDown=$false; BlubUntil=[datetime]::MinValue; NextBlub=[datetime]::UtcNow.AddSeconds(8); DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0; DragAxis=''; DragDir=0; DragLeg=0.0; DragPath=0.0; DragMin=0.0; DragMax=0.0; DragReversals=0; DragStarted=[datetime]::MinValue; AngryUntil=[datetime]::MinValue; LastLoc=$form.Location; LastMove=[datetime]::MinValue; WindowDragging=$false; WindowPhysics=$false; WindowVelX=0.0; WindowVelY=0.0; WindowBounds=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; WindowAt=[datetime]::UtcNow; ShakeAxis=''; ShakeDir=0; ShakeLeg=0.0; ShakePath=0.0; ShakeMin=0; ShakeMax=0; ShakeReversals=0; ShakeStarted=[datetime]::MinValue; LastCursor=[System.Windows.Forms.Cursor]::Position; CursorStillSince=[datetime]::UtcNow }
 $state | Add-Member -NotePropertyName Dragging -NotePropertyValue $false
 $state | Add-Member -NotePropertyName LookAngle -NotePropertyValue 0.0
+$state | Add-Member -NotePropertyName Style -NotePropertyValue 'Classic'
+$state | Add-Member -NotePropertyName BackgroundTransparency -NotePropertyValue 35
 $state | Add-Member -NotePropertyName FishColor -NotePropertyValue ([System.Drawing.Color]::White)
 $state | Add-Member -NotePropertyName HatsEnabled -NotePropertyValue $true
 $state | Add-Member -NotePropertyName HatStyle -NotePropertyValue 'Traffic cone'
@@ -60,20 +80,64 @@ $state | Add-Member -NotePropertyName RocketLeagueOverrideUntil -NotePropertyVal
 $state | Add-Member -NotePropertyName AutoBreedEnabled -NotePropertyValue $false
 $state | Add-Member -NotePropertyName NextBreed -NotePropertyValue ([datetime]::MaxValue)
 $state | Add-Member -NotePropertyName BreedInterval -NotePropertyValue 10
+$state | Add-Member -NotePropertyName InsertKeyVK -NotePropertyValue 0x2D
+$state | Add-Member -NotePropertyName DeleteKeyVK -NotePropertyValue 0x2E
+$state | Add-Member -NotePropertyName EndKeyVK -NotePropertyValue 0x23
+$state | Add-Member -NotePropertyName PageUpKeyVK -NotePropertyValue 0x21
+$state | Add-Member -NotePropertyName PageDownKeyVK -NotePropertyValue 0x22
+$backgroundOverlay=New-Object System.Windows.Forms.Form
+$backgroundOverlay.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::None
+$backgroundOverlay.ShowInTaskbar=$false
+$backgroundOverlay.StartPosition=[System.Windows.Forms.FormStartPosition]::Manual
+$backgroundOverlay.BackColor=[System.Drawing.Color]::FromArgb(24,104,214)
+$backgroundOverlay.TopMost=$true
+$backgroundOverlay.Opacity=0.01
+$backgroundOverlayBounds=[System.Drawing.Rectangle]::Empty
+$overlayStyle=[FishTankNative]::GetStyle($backgroundOverlay.Handle,-20)
+$overlayStyle=$overlayStyle -bor 0x20 -bor 0x80000 -bor 0x80 -bor 0x8000000
+[FishTankNative]::SetStyle($backgroundOverlay.Handle,-20,$overlayStyle)
+$updateBackgroundOverlay={
+  if($state.BackgroundTransparency -ge 100 -or $tank.ClientSize.Width -le 0 -or $tank.ClientSize.Height -le 0){if($backgroundOverlay.Visible){$backgroundOverlay.Hide()};return}
+  $targetBounds=$tank.RectangleToScreen($tank.ClientRectangle)
+  $needsZOrder=$false
+  if(-not $backgroundOverlay.Bounds.Equals($targetBounds)){$backgroundOverlay.Bounds=$targetBounds;$needsZOrder=$true}
+  $targetOpacity=[Math]::Max(0.01,[Math]::Min(1.0,(100.0-$state.BackgroundTransparency)/100.0))
+  if([Math]::Abs($backgroundOverlay.Opacity-$targetOpacity) -gt 0.001){$backgroundOverlay.Opacity=$targetOpacity}
+  if(-not $backgroundOverlay.Visible){$backgroundOverlay.Show();$needsZOrder=$true}
+  if($needsZOrder){
+    [FishTankNative]::SetWindowPos($backgroundOverlay.Handle,$form.Handle,$targetBounds.X,$targetBounds.Y,$targetBounds.Width,$targetBounds.Height,0x10 -bor 0x40) | Out-Null
+  }
+}
 $script:drawResources=$null
 $script:refreshDrawingResources={
   $key="$($state.FishColor.ToArgb()):$($state.HatColor.ToArgb()):$($state.HatAccentColor.ToArgb())"
   if($script:drawResources -and $script:drawResources.Key -eq $key){return}
   if($script:drawResources){
-    $script:drawResources.FishFont.Dispose();$script:drawResources.FishBrush.Dispose();$script:drawResources.HatBrush.Dispose();$script:drawResources.HatAccentBrush.Dispose()
+    $script:drawResources.FishFont.Dispose();$script:drawResources.FishBrush.Dispose();$script:drawResources.FishOutlineBrush.Dispose();foreach($glyphSet in $script:drawResources.FishGlyphs.Values){$glyphSet.Left.Dispose();$glyphSet.Right.Dispose()};$script:drawResources.HatOutlinePen.Dispose();$script:drawResources.TextOutlineBrush.Dispose();$script:drawResources.HatBrush.Dispose();$script:drawResources.HatAccentBrush.Dispose()
     foreach($b in $script:drawResources.PartyBrushes){$b.Dispose()}
     $script:drawResources.AngerFont.Dispose();$script:drawResources.AngerBrush.Dispose();$script:drawResources.BlubFont.Dispose();$script:drawResources.BlubBrush.Dispose();$script:drawResources.BubblePen.Dispose();$script:drawResources.GlintBrush.Dispose();$script:drawResources.ScoreFont.Dispose();$script:drawResources.ScoreBrush.Dispose()
   }
   $party=@((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,239,68,68))),(New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,255,145,35))),(New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,255,215,55))),(New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,54,181,95))),(New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,58,126,235))),(New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,153,79,207))))
+  $fishFont=New-Object System.Drawing.Font('Consolas',14,[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel)
+  $fishBrush=New-Object System.Drawing.SolidBrush($state.FishColor)
+  $fishOutlineBrush=New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,3,12,24))
+  $makeFishGlyph={param([string]$glyph)
+    $bitmap=New-Object System.Drawing.Bitmap(64,28,[System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $bitmapGraphics=[System.Drawing.Graphics]::FromImage($bitmap);$bitmapGraphics.SmoothingMode=[System.Drawing.Drawing2D.SmoothingMode]::AntiAlias;$bitmapGraphics.TextRenderingHint=[System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+    foreach($offset in @(@(-1.4,-1.4),@(0,-1.8),@(1.4,-1.4),@(-1.8,0),@(1.8,0),@(-1.4,1.4),@(0,1.8),@(1.4,1.4))){$bitmapGraphics.DrawString($glyph,$fishFont,$fishOutlineBrush,[single](2+$offset[0]),[single](1+$offset[1]))}
+    $bitmapGraphics.DrawString($glyph,$fishFont,$fishBrush,[single]2,[single]1);$bitmapGraphics.Dispose();return $bitmap
+  }
+  $fishGlyphs=@{}
+  foreach($styleChoice in $script:FishStyleChoices){$fishGlyphs[$styleChoice.Name]=[pscustomobject]@{Left=(& $makeFishGlyph $styleChoice.Left);Right=(& $makeFishGlyph $styleChoice.Right)}}
+  $fishOutlineBrush.Dispose()
   $script:drawResources=[pscustomobject]@{
     Key=$key
-    FishFont=(New-Object System.Drawing.Font('Consolas',14,[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel))
-    FishBrush=(New-Object System.Drawing.SolidBrush($state.FishColor))
+    FishFont=$fishFont
+    FishBrush=$fishBrush
+    FishOutlineBrush=(New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,3,12,24)))
+    FishGlyphs=$fishGlyphs
+    HatOutlinePen=(New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,3,12,24),2.6))
+    TextOutlineBrush=(New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,3,12,24)))
     HatBrush=(New-Object System.Drawing.SolidBrush($state.HatColor))
     HatAccentBrush=(New-Object System.Drawing.SolidBrush($state.HatAccentColor))
     PartyBrushes=$party
@@ -86,6 +150,10 @@ $script:refreshDrawingResources={
     ScoreFont=(New-Object System.Drawing.Font('Consolas',15,[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel))
     ScoreBrush=(New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White))
   }
+}
+$drawOutlinedText={param($graphics,[string]$text,$font,$brush,[single]$x,[single]$y,[single]$radius)
+  foreach($offset in @(@(-1,-1),@(0,-1),@(1,-1),@(-1,0),@(1,0),@(-1,1),@(0,1),@(1,1))){$graphics.DrawString($text,$font,$script:drawResources.TextOutlineBrush,[single]($x+$offset[0]*$radius),[single]($y+$offset[1]*$radius))}
+  $graphics.DrawString($text,$font,$brush,$x,$y)
 }
 $script:dellLogoBitmap=$null
 $script:dellLogoColorKey=''
@@ -112,29 +180,29 @@ $state | Add-Member -NotePropertyName PgUpStarted -NotePropertyValue ([datetime]
 $state | Add-Member -NotePropertyName PgDownStarted -NotePropertyValue ([datetime]::MinValue)
 $state | Add-Member -NotePropertyName PgUpLastAdjust -NotePropertyValue ([datetime]::MinValue)
 $state | Add-Member -NotePropertyName PgDownLastAdjust -NotePropertyValue ([datetime]::MinValue)
-$makeFish = { param($x,$y,$speed) [pscustomobject]@{ X=[double]$x; Y=[double]$y; Direction=1; Angle=0.0; LookAngle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Speed=[double]$speed; Dragging=$false; BlubUntil=[datetime]::MinValue; NextBlub=[datetime]::MinValue; AngryUntil=[datetime]::MinValue; DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0 } }
+$makeFish = { param($x,$y,$speed) [pscustomobject]@{ X=[double]$x; Y=[double]$y; Direction=1; Angle=0.0; LookAngle=0.0; Heading=0.0; TargetX=0.0; TargetY=0.0; Speed=[double]$speed; Style='Classic'; Dragging=$false; BlubUntil=[datetime]::MinValue; NextBlub=[datetime]::MinValue; AngryUntil=[datetime]::MinValue; DragOffsetX=0.0; DragOffsetY=0.0; LastDragX=0.0; LastDragY=0.0 } }
 $buddy = & $makeFish 400 230 2.8
 $fish3 = & $makeFish 180 260 2.5
 $fish4 = & $makeFish 340 80 2.6
 $fishies=@($state,$buddy,$fish3,$fish4)
 $rng = New-Object System.Random
-for($i=$fishies.Count;$i -lt 500;$i++){$extraFish=& $makeFish (30+$rng.NextDouble()*520) (30+$rng.NextDouble()*310) (2.3+$rng.NextDouble()*1.0);$fishies+=,$extraFish}
+for($i=$fishies.Count;$i -lt 1000;$i++){$extraFish=& $makeFish (30+$rng.NextDouble()*520) (30+$rng.NextDouble()*310) (2.3+$rng.NextDouble()*1.0);$fishies+=,$extraFish}
 for($i=0;$i -lt $fishies.Count;$i++){$fishies[$i].NextBlub=[datetime]::UtcNow.AddSeconds(2+($i*1.6)+$rng.NextDouble()*3)}
 $pickRoamTarget = {
-  $left=24.0; $right=[Math]::Max($left+1,$tank.ClientSize.Width-118.0)
-  $top=24.0; $bottom=[Math]::Max($top+1,$tank.ClientSize.Height-58.0)
+  $left=18.0; $right=[Math]::Max($left+1,$tank.ClientSize.Width-88.0)
+  $top=18.0; $bottom=[Math]::Max($top+12,$tank.ClientSize.Height-34.0)
   $state.TargetX=$left+$rng.NextDouble()*($right-$left)
   $state.TargetY=$top+$rng.NextDouble()*($bottom-$top)
 }
 $pickBuddyTarget = {
-  $left=24.0;$right=[Math]::Max($left+1,$tank.ClientSize.Width-118.0)
-  $top=24.0;$bottom=[Math]::Max($top+1,$tank.ClientSize.Height-58.0)
+  $left=18.0;$right=[Math]::Max($left+1,$tank.ClientSize.Width-88.0)
+  $top=18.0;$bottom=[Math]::Max($top+12,$tank.ClientSize.Height-34.0)
   $buddy.TargetX=$left+$rng.NextDouble()*($right-$left)
   $buddy.TargetY=$top+$rng.NextDouble()*($bottom-$top)
 }
 $pickFishTarget = { param($fish)
-  $left=24.0;$right=[Math]::Max($left+1,$tank.ClientSize.Width-118.0)
-  $top=24.0;$bottom=[Math]::Max($top+1,$tank.ClientSize.Height-58.0)
+  $left=18.0;$right=[Math]::Max($left+1,$tank.ClientSize.Width-88.0)
+  $top=18.0;$bottom=[Math]::Max($top+12,$tank.ClientSize.Height-34.0)
   $fish.TargetX=$left+$rng.NextDouble()*($right-$left);$fish.TargetY=$top+$rng.NextDouble()*($bottom-$top)
 }
 $pickStealTarget = {
@@ -220,6 +288,21 @@ $typingGrabItem = New-Object System.Windows.Forms.ToolStripMenuItem('Grab cursor
 $typingGrabItem.Checked = $true
 $mischiefItem = New-Object System.Windows.Forms.ToolStripMenuItem('Cursor mischief (End lures fish; Delete kicks him off)')
 $mischiefItem.Checked = $true
+$backgroundTransparencyItem=New-Object System.Windows.Forms.ToolStripMenuItem('Tank background transparency (100%)')
+$backgroundTransparencyItem.Add_Click({
+  $previousTransparency=$state.BackgroundTransparency
+  $transparencyDialog=New-Object System.Windows.Forms.Form
+  $transparencyDialog.Text='Tank background transparency';$transparencyDialog.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::FixedDialog;$transparencyDialog.StartPosition=[System.Windows.Forms.FormStartPosition]::CenterParent;$transparencyDialog.ClientSize=New-Object System.Drawing.Size(330,112);$transparencyDialog.MaximizeBox=$false;$transparencyDialog.MinimizeBox=$false;$transparencyDialog.ShowInTaskbar=$false
+  $transparencyLabel=New-Object System.Windows.Forms.Label;$transparencyLabel.Text="$($state.BackgroundTransparency)% transparent";$transparencyLabel.Location=New-Object System.Drawing.Point(12,10);$transparencyLabel.AutoSize=$true
+  $transparencyTrack=New-Object System.Windows.Forms.TrackBar;$transparencyTrack.Minimum=0;$transparencyTrack.Maximum=100;$transparencyTrack.TickFrequency=10;$transparencyTrack.SmallChange=1;$transparencyTrack.LargeChange=10;$transparencyTrack.Value=$state.BackgroundTransparency;$transparencyTrack.Location=New-Object System.Drawing.Point(8,30);$transparencyTrack.Size=New-Object System.Drawing.Size(310,42)
+  $transparencyTrack.Add_ValueChanged({$state.BackgroundTransparency=$transparencyTrack.Value;$transparencyLabel.Text="$($state.BackgroundTransparency)% transparent";& $updateBackgroundOverlay})
+  $okTransparency=New-Object System.Windows.Forms.Button;$okTransparency.Text='OK';$okTransparency.DialogResult=[System.Windows.Forms.DialogResult]::OK;$okTransparency.Location=New-Object System.Drawing.Point(226,76)
+  $cancelTransparency=New-Object System.Windows.Forms.Button;$cancelTransparency.Text='Cancel';$cancelTransparency.DialogResult=[System.Windows.Forms.DialogResult]::Cancel;$cancelTransparency.Location=New-Object System.Drawing.Point(144,76)
+  [void]$transparencyDialog.Controls.Add($transparencyLabel);[void]$transparencyDialog.Controls.Add($transparencyTrack);[void]$transparencyDialog.Controls.Add($okTransparency);[void]$transparencyDialog.Controls.Add($cancelTransparency);$transparencyDialog.AcceptButton=$okTransparency;$transparencyDialog.CancelButton=$cancelTransparency
+  if($transparencyDialog.ShowDialog($form) -ne [System.Windows.Forms.DialogResult]::OK){$state.BackgroundTransparency=$previousTransparency;& $updateBackgroundOverlay}
+  $backgroundTransparencyItem.Text="Tank background transparency ($($state.BackgroundTransparency)%)"
+  $transparencyDialog.Dispose()
+})
 $chanceMenu = New-Object System.Windows.Forms.ToolStripMenuItem('Cursor steal chance')
 $chanceItems = @()
 foreach($pct in 5..50 | Where-Object { $_ % 5 -eq 0 }) {
@@ -237,20 +320,20 @@ $fishCountMenu=New-Object System.Windows.Forms.ToolStripMenuItem('Number of fish
 $fishCountItems=@()
 $setFishCount = {
   param($count)
-  $state.FishCount=[Math]::Max(1,[Math]::Min(500,[int]$count))
+  $state.FishCount=[Math]::Max(1,[Math]::Min(1000,[int]$count))
   $fishCountMenu.Text="Number of fish ($($state.FishCount))"
   foreach($item in $fishCountItems){$item.Checked=([int]$item.Tag -eq $state.FishCount)}
   for($i=1;$i -lt $state.FishCount;$i++){if($fishies[$i].TargetX -le 0){& $pickFishTarget $fishies[$i]}}
   if($state.CarrierIndex -ge $state.FishCount){$state.CarrierIndex=0}
   if($state.Stealing -and $state.StealPhase -eq 'Carrying' -and $state.CarrierIndex -ge $state.FishCount){$state.StealPhase='Hunting'}
-  if($state.FishCount -ge 500 -and $state.AutoBreedEnabled){$state.AutoBreedEnabled=$false;$breedItem.Checked=$false;$state.NextBreed=[datetime]::MaxValue}
+  if($state.FishCount -ge 1000 -and $state.AutoBreedEnabled){$state.AutoBreedEnabled=$false;$breedItem.Checked=$false;$state.NextBreed=[datetime]::MaxValue}
   $tank.Invalidate()
 }
 $fishCountMenu.Add_Click({
   $countDialog=New-Object System.Windows.Forms.Form
   $countDialog.Text='Number of fish';$countDialog.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::FixedDialog;$countDialog.StartPosition=[System.Windows.Forms.FormStartPosition]::CenterParent;$countDialog.ClientSize=New-Object System.Drawing.Size(240,92);$countDialog.MaximizeBox=$false;$countDialog.MinimizeBox=$false;$countDialog.ShowInTaskbar=$false
-  $countLabel=New-Object System.Windows.Forms.Label;$countLabel.Text='Choose 1 to 500 fish:';$countLabel.Location=New-Object System.Drawing.Point(12,12);$countLabel.AutoSize=$true
-  $countBox=New-Object System.Windows.Forms.NumericUpDown;$countBox.Minimum=1;$countBox.Maximum=500;$countBox.Value=$state.FishCount;$countBox.Location=New-Object System.Drawing.Point(148,9);$countBox.Width=76
+  $countLabel=New-Object System.Windows.Forms.Label;$countLabel.Text='Choose 1 to 1000 fish:';$countLabel.Location=New-Object System.Drawing.Point(12,12);$countLabel.AutoSize=$true
+  $countBox=New-Object System.Windows.Forms.NumericUpDown;$countBox.Minimum=1;$countBox.Maximum=1000;$countBox.Value=$state.FishCount;$countBox.Location=New-Object System.Drawing.Point(148,9);$countBox.Width=76
   $okButton=New-Object System.Windows.Forms.Button;$okButton.Text='OK';$okButton.DialogResult=[System.Windows.Forms.DialogResult]::OK;$okButton.Location=New-Object System.Drawing.Point(68,52)
   $cancelButton=New-Object System.Windows.Forms.Button;$cancelButton.Text='Cancel';$cancelButton.DialogResult=[System.Windows.Forms.DialogResult]::Cancel;$cancelButton.Location=New-Object System.Drawing.Point(148,52)
   [void]$countDialog.Controls.Add($countLabel);[void]$countDialog.Controls.Add($countBox);[void]$countDialog.Controls.Add($okButton);[void]$countDialog.Controls.Add($cancelButton);$countDialog.AcceptButton=$okButton;$countDialog.CancelButton=$cancelButton
@@ -282,6 +365,39 @@ $colorDialog=New-Object System.Windows.Forms.ColorDialog
 $colorDialog.AllowFullOpen=$true;$colorDialog.FullOpen=$true;$colorDialog.Color=$state.FishColor
 $fishColorItem=New-Object System.Windows.Forms.ToolStripMenuItem('Fish color…')
 $fishColorItem.Add_Click({if($colorDialog.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK){$state.FishColor=$colorDialog.Color;$tank.Invalidate()}})
+$fishStylesItem=New-Object System.Windows.Forms.ToolStripMenuItem('Fish styles…')
+$fishStylesItem.Add_Click({
+  $styleDialog=New-Object System.Windows.Forms.Form;$styleDialog.Text='Fish styles';$styleDialog.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::FixedDialog;$styleDialog.StartPosition=[System.Windows.Forms.FormStartPosition]::CenterParent;$styleDialog.ClientSize=New-Object System.Drawing.Size(340,146);$styleDialog.MaximizeBox=$false;$styleDialog.MinimizeBox=$false;$styleDialog.ShowInTaskbar=$false
+  $fishNumberLabel=New-Object System.Windows.Forms.Label;$fishNumberLabel.Text='Fish number:';$fishNumberLabel.Location=New-Object System.Drawing.Point(16,18);$fishNumberLabel.AutoSize=$true
+  $fishNumberBox=New-Object System.Windows.Forms.NumericUpDown;$fishNumberBox.Minimum=1;$fishNumberBox.Maximum=$state.FishCount;$fishNumberBox.Value=1;$fishNumberBox.Location=New-Object System.Drawing.Point(190,14);$fishNumberBox.Width=110
+  $fishStyleLabel=New-Object System.Windows.Forms.Label;$fishStyleLabel.Text='Appearance:';$fishStyleLabel.Location=New-Object System.Drawing.Point(16,52);$fishStyleLabel.AutoSize=$true
+  $fishStyleBox=New-Object System.Windows.Forms.ComboBox;$fishStyleBox.DropDownStyle=[System.Windows.Forms.ComboBoxStyle]::DropDownList;$fishStyleBox.Location=New-Object System.Drawing.Point(190,48);$fishStyleBox.Width=130
+  foreach($styleChoice in $script:FishStyleChoices){[void]$fishStyleBox.Items.Add($styleChoice.Name)}
+  $fishStyleBox.SelectedItem=$fishies[0].Style
+  $fishNumberBox.Add_ValueChanged({$currentStyle=[string]$fishies[[int]$fishNumberBox.Value-1].Style;if(-not $fishStyleBox.Items.Contains($currentStyle)){$currentStyle='Classic'};$fishStyleBox.SelectedItem=$currentStyle})
+  $applyStyleButton=New-Object System.Windows.Forms.Button;$applyStyleButton.Text='Apply';$applyStyleButton.DialogResult=[System.Windows.Forms.DialogResult]::OK;$applyStyleButton.Location=New-Object System.Drawing.Point(238,102)
+  $cancelStyleButton=New-Object System.Windows.Forms.Button;$cancelStyleButton.Text='Cancel';$cancelStyleButton.DialogResult=[System.Windows.Forms.DialogResult]::Cancel;$cancelStyleButton.Location=New-Object System.Drawing.Point(152,102)
+  [void]$styleDialog.Controls.Add($fishNumberLabel);[void]$styleDialog.Controls.Add($fishNumberBox);[void]$styleDialog.Controls.Add($fishStyleLabel);[void]$styleDialog.Controls.Add($fishStyleBox);[void]$styleDialog.Controls.Add($applyStyleButton);[void]$styleDialog.Controls.Add($cancelStyleButton);$styleDialog.AcceptButton=$applyStyleButton;$styleDialog.CancelButton=$cancelStyleButton
+  if($styleDialog.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK){$fishies[[int]$fishNumberBox.Value-1].Style=[string]$fishStyleBox.SelectedItem;$tank.Invalidate()}
+  $styleDialog.Dispose()
+})
+$script:HotkeyCodes=@{'None'=0;'Insert'=0x2D;'Delete'=0x2E;'End'=0x23;'Page Up'=0x21;'Page Down'=0x22;'Home'=0x24;'Space'=0x20;'Tab'=0x09;'Escape'=0x1B}
+foreach($letterCode in 'A'..'Z'){$script:HotkeyCodes[$letterCode]=[int][char]$letterCode}
+foreach($digitCode in 0..9){$script:HotkeyCodes[[string]$digitCode]=0x30+$digitCode}
+foreach($functionIndex in 1..12){$script:HotkeyCodes["F$functionIndex"]=0x6F+$functionIndex}
+$script:HotkeyChoiceNames=@('None','Insert','Delete','End','Page Up','Page Down','Home','Space','Tab','Escape')+@('F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12')+@('A'..'Z')+@('0'..'9')
+$keyboardShortcutsItem=New-Object System.Windows.Forms.ToolStripMenuItem('Keyboard shortcuts…')
+$keyboardShortcutsItem.Add_Click({
+  $shortcutDialog=New-Object System.Windows.Forms.Form;$shortcutDialog.Text='Keyboard shortcuts';$shortcutDialog.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::FixedDialog;$shortcutDialog.StartPosition=[System.Windows.Forms.FormStartPosition]::CenterParent;$shortcutDialog.ClientSize=New-Object System.Drawing.Size(360,244);$shortcutDialog.MaximizeBox=$false;$shortcutDialog.MinimizeBox=$false;$shortcutDialog.ShowInTaskbar=$false
+  $shortcutRows=@(@('Toggle Pong','InsertKeyVK'),@('Cursor mischief','EndKeyVK'),@('Kick fish off cursor','DeleteKeyVK'),@('Add fish','PageUpKeyVK'),@('Remove fish','PageDownKeyVK'));$shortcutCombos=@();$rowIndex=0
+  foreach($row in $shortcutRows){$label=New-Object System.Windows.Forms.Label;$label.Text=$row[0];$label.Location=New-Object System.Drawing.Point(14,(14+$rowIndex*36));$label.AutoSize=$true;$combo=New-Object System.Windows.Forms.ComboBox;$combo.DropDownStyle=[System.Windows.Forms.ComboBoxStyle]::DropDownList;$combo.Location=New-Object System.Drawing.Point(185,(10+$rowIndex*36));$combo.Width=150;[void]$combo.Items.AddRange([object[]]$script:HotkeyChoiceNames);$currentVK=[int]$state.($row[1]);$currentName=($script:HotkeyCodes.GetEnumerator()|Where-Object{$_.Value -eq $currentVK}|Select-Object -First 1).Key;if(-not $currentName){$currentName='None'};$combo.SelectedItem=$currentName;[void]$shortcutDialog.Controls.Add($label);[void]$shortcutDialog.Controls.Add($combo);$shortcutCombos+=,$combo;$rowIndex++}
+  $shortcutHelp=New-Object System.Windows.Forms.Label;$shortcutHelp.Text='Choose any available key; avoid keys you type with.';$shortcutHelp.Location=New-Object System.Drawing.Point(14,194);$shortcutHelp.AutoSize=$true
+  $saveShortcuts=New-Object System.Windows.Forms.Button;$saveShortcuts.Text='Apply';$saveShortcuts.DialogResult=[System.Windows.Forms.DialogResult]::OK;$saveShortcuts.Location=New-Object System.Drawing.Point(252,214)
+  $cancelShortcuts=New-Object System.Windows.Forms.Button;$cancelShortcuts.Text='Cancel';$cancelShortcuts.DialogResult=[System.Windows.Forms.DialogResult]::Cancel;$cancelShortcuts.Location=New-Object System.Drawing.Point(168,214)
+  [void]$shortcutDialog.Controls.Add($shortcutHelp);[void]$shortcutDialog.Controls.Add($saveShortcuts);[void]$shortcutDialog.Controls.Add($cancelShortcuts);$shortcutDialog.AcceptButton=$saveShortcuts;$shortcutDialog.CancelButton=$cancelShortcuts
+  if($shortcutDialog.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK){for($i=0;$i -lt $shortcutRows.Count;$i++){$state.($shortcutRows[$i][1])=[int]$script:HotkeyCodes[[string]$shortcutCombos[$i].SelectedItem]}}
+  $shortcutDialog.Dispose()
+})
 $hatColorDialog=New-Object System.Windows.Forms.ColorDialog
 $hatColorDialog.AllowFullOpen=$true;$hatColorDialog.FullOpen=$true;$hatColorDialog.Color=$state.HatColor
 $hatStyleMenu=New-Object System.Windows.Forms.ToolStripMenuItem('Hat style')
@@ -312,8 +428,10 @@ $hatColorItem.Add_Click({if($hatColorDialog.ShowDialog($form) -eq [System.Window
 [void]$hatStyleMenu.DropDownItems.Add($hatColorItem)
 $playPongItem=New-Object System.Windows.Forms.ToolStripMenuItem('Toggle cursor pong (Insert; uses 2 fish)')
 $updateItem = New-Object System.Windows.Forms.ToolStripMenuItem('Check for updates')
+$whatsNewItem=New-Object System.Windows.Forms.ToolStripMenuItem("New stuff in v$($script:FishTankVersion)")
+$restoreVersionItem=New-Object System.Windows.Forms.ToolStripMenuItem('Restore an older version…')
 $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem('Quit Fish Tank')
-[void]$menu.Items.Add($awakeItem); [void]$menu.Items.Add($followItem); [void]$menu.Items.Add($clickItem); [void]$menu.Items.Add($tiltItem); [void]$menu.Items.Add($ambienceItem); [void]$menu.Items.Add($fishColorItem); [void]$menu.Items.Add($hatStyleMenu); [void]$menu.Items.Add($typingGrabItem); [void]$menu.Items.Add($mischiefItem); [void]$menu.Items.Add($chanceMenu); [void]$menu.Items.Add($fishCountMenu); [void]$menu.Items.Add($breedItem); [void]$menu.Items.Add($breedIntervalMenu); [void]$menu.Items.Add($playPongItem); [void]$menu.Items.Add($updateItem)
+[void]$menu.Items.Add($awakeItem); [void]$menu.Items.Add($followItem); [void]$menu.Items.Add($clickItem); [void]$menu.Items.Add($tiltItem); [void]$menu.Items.Add($ambienceItem); [void]$menu.Items.Add($backgroundTransparencyItem); [void]$menu.Items.Add($fishColorItem); [void]$menu.Items.Add($fishStylesItem); [void]$menu.Items.Add($hatStyleMenu); [void]$menu.Items.Add($typingGrabItem); [void]$menu.Items.Add($mischiefItem); [void]$menu.Items.Add($keyboardShortcutsItem); [void]$menu.Items.Add($chanceMenu); [void]$menu.Items.Add($fishCountMenu); [void]$menu.Items.Add($breedItem); [void]$menu.Items.Add($breedIntervalMenu); [void]$menu.Items.Add($playPongItem); [void]$menu.Items.Add($updateItem);[void]$menu.Items.Add($whatsNewItem);[void]$menu.Items.Add($restoreVersionItem)
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)); [void]$menu.Items.Add($exitItem)
 $tray = New-Object System.Windows.Forms.NotifyIcon
 $tray.Text = 'Fish Tank settings'
@@ -321,6 +439,48 @@ $tray.Icon = [System.Drawing.SystemIcons]::Information
 $tray.ContextMenuStrip = $menu
 $tray.Visible = $true
 $tray.Add_Click({ if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) { $menu.Show([System.Windows.Forms.Cursor]::Position) } })
+$showWhatsNew={
+  $newsDialog=New-Object System.Windows.Forms.Form;$newsDialog.Text="Fish Tank v$($script:FishTankVersion) - New Stuff";$newsDialog.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::FixedDialog;$newsDialog.StartPosition=[System.Windows.Forms.FormStartPosition]::CenterParent;$newsDialog.ClientSize=New-Object System.Drawing.Size(450,320);$newsDialog.MaximizeBox=$false;$newsDialog.MinimizeBox=$false;$newsDialog.ShowInTaskbar=$false
+  $newsHeading=New-Object System.Windows.Forms.Label;$newsHeading.Text="Added in Fish Tank v$($script:FishTankVersion)";$newsHeading.Font=New-Object System.Drawing.Font('Segoe UI',12,[System.Drawing.FontStyle]::Bold);$newsHeading.Location=New-Object System.Drawing.Point(18,16);$newsHeading.AutoSize=$true
+  $newsText=New-Object System.Windows.Forms.TextBox;$newsText.Multiline=$true;$newsText.ReadOnly=$true;$newsText.ScrollBars=[System.Windows.Forms.ScrollBars]::Vertical;$newsText.BorderStyle=[System.Windows.Forms.BorderStyle]::FixedSingle;$newsText.Location=New-Object System.Drawing.Point(18,52);$newsText.Size=New-Object System.Drawing.Size(414,208);$newsText.Text=(($script:FishTankReleaseNotes|ForEach-Object{"- $_"}) -join [Environment]::NewLine)
+  $newsClose=New-Object System.Windows.Forms.Button;$newsClose.Text='Close';$newsClose.DialogResult=[System.Windows.Forms.DialogResult]::OK;$newsClose.Location=New-Object System.Drawing.Point(348,274)
+  [void]$newsDialog.Controls.Add($newsHeading);[void]$newsDialog.Controls.Add($newsText);[void]$newsDialog.Controls.Add($newsClose);$newsDialog.AcceptButton=$newsClose;[void]$newsDialog.ShowDialog($form);$newsDialog.Dispose()
+}
+$getVersionHistory={
+  $allCommits=@();$client=New-Object System.Net.WebClient;$client.Headers.Add('User-Agent','Fish-Tank-Version-History');$client.Encoding=[System.Text.Encoding]::UTF8
+  try{for($page=1;$page -le 50;$page++){$uri="https://api.github.com/repos/technoneverdies741-del/Fish-Tank-Pet/commits?path=FishTank.ps1&per_page=10&page=$page";$json=$client.DownloadString($uri);$pageItems=@($json|ConvertFrom-Json);if($pageItems.Count -eq 0){break};$allCommits+=@($pageItems);if($pageItems.Count -lt 10){break}}}finally{$client.Dispose()}
+  if($allCommits.Count -eq 0){throw 'No published Fish Tank source versions were found.'}
+  $versions=@();for($i=0;$i -lt $allCommits.Count;$i++){$commit=$allCommits[$i];$version=$allCommits.Count-$i;$message=(([string]$commit.commit.message -split "`r?`n")[0] -replace '\s+',' ').Trim();$versions+=,[pscustomobject]@{Version=$version;Sha=[string]$commit.sha;Message=$message;Label="v$version - $message"}}
+  return ,$versions
+}
+$whatsNewItem.Add_Click({& $showWhatsNew})
+$restoreVersionItem.Add_Click({
+  $restoreVersionItem.Enabled=$false
+  try{
+    $history=@(& $getVersionHistory);$older=@($history|Where-Object{$_.Version -lt [int]$script:FishTankVersion})
+    if($older.Count -eq 0){throw 'No earlier versions are available yet.'}
+    $restoreDialog=New-Object System.Windows.Forms.Form;$restoreDialog.Text='Restore an older version';$restoreDialog.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::FixedDialog;$restoreDialog.StartPosition=[System.Windows.Forms.FormStartPosition]::CenterParent;$restoreDialog.ClientSize=New-Object System.Drawing.Size(470,240);$restoreDialog.MaximizeBox=$false;$restoreDialog.MinimizeBox=$false;$restoreDialog.ShowInTaskbar=$false
+    $restoreLabel=New-Object System.Windows.Forms.Label;$restoreLabel.Text='Choose a saved source version (v1 is the oldest):';$restoreLabel.Location=New-Object System.Drawing.Point(14,14);$restoreLabel.AutoSize=$true
+    $restoreCombo=New-Object System.Windows.Forms.ComboBox;$restoreCombo.DropDownStyle=[System.Windows.Forms.ComboBoxStyle]::DropDownList;$restoreCombo.Location=New-Object System.Drawing.Point(14,40);$restoreCombo.Size=New-Object System.Drawing.Size(442,26);foreach($entry in $older){[void]$restoreCombo.Items.Add($entry.Label)};$restoreCombo.SelectedIndex=0
+    $restoreDetails=New-Object System.Windows.Forms.TextBox;$restoreDetails.Multiline=$true;$restoreDetails.ReadOnly=$true;$restoreDetails.Location=New-Object System.Drawing.Point(14,76);$restoreDetails.Size=New-Object System.Drawing.Size(442,100);$restoreDetails.Text=$older[0].Message
+    $restoreCombo.Add_SelectedIndexChanged({if($restoreCombo.SelectedIndex -ge 0){$restoreDetails.Text=$older[$restoreCombo.SelectedIndex].Message}})
+    $restoreButton=New-Object System.Windows.Forms.Button;$restoreButton.Text='Restore';$restoreButton.DialogResult=[System.Windows.Forms.DialogResult]::OK;$restoreButton.Location=New-Object System.Drawing.Point(360,194)
+    $restoreCancel=New-Object System.Windows.Forms.Button;$restoreCancel.Text='Cancel';$restoreCancel.DialogResult=[System.Windows.Forms.DialogResult]::Cancel;$restoreCancel.Location=New-Object System.Drawing.Point(274,194)
+    [void]$restoreDialog.Controls.Add($restoreLabel);[void]$restoreDialog.Controls.Add($restoreCombo);[void]$restoreDialog.Controls.Add($restoreDetails);[void]$restoreDialog.Controls.Add($restoreButton);[void]$restoreDialog.Controls.Add($restoreCancel);$restoreDialog.AcceptButton=$restoreButton;$restoreDialog.CancelButton=$restoreCancel
+    $dialogResult=$restoreDialog.ShowDialog($form);$selectedVersion=if($restoreCombo.SelectedIndex -ge 0){$older[$restoreCombo.SelectedIndex]}else{$null};$restoreDialog.Dispose()
+    if($dialogResult -eq [System.Windows.Forms.DialogResult]::OK -and $selectedVersion){
+      $installedPath=Join-Path $env:LOCALAPPDATA 'FishTankPet\FishTank.ps1';$client=New-Object System.Net.WebClient;$client.Headers.Add('User-Agent','Fish-Tank-Restore');$client.Encoding=[System.Text.Encoding]::UTF8
+      try{$download=$client.DownloadString("https://raw.githubusercontent.com/technoneverdies741-del/Fish-Tank-Pet/$($selectedVersion.Sha)/FishTank.ps1")}finally{$client.Dispose()}
+      if([string]::IsNullOrWhiteSpace($download) -or $download.Length -lt 1000){throw 'The selected version download was empty or incomplete.'}
+      $tempPath=$installedPath+'.restore-'+[guid]::NewGuid().ToString('N')+'.ps1';[System.IO.File]::WriteAllText($tempPath,$download,(New-Object System.Text.UTF8Encoding($false)));$parseTokens=$null;$parseErrors=$null;[System.Management.Automation.Language.Parser]::ParseFile($tempPath,[ref]$parseTokens,[ref]$parseErrors)|Out-Null
+      if($parseErrors.Count -gt 0){Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue;throw 'The selected version failed its PowerShell syntax check.'}
+      $backupPath=$installedPath+".pre-restore-v$($script:FishTankVersion).bak";Copy-Item -LiteralPath $installedPath -Destination $backupPath -Force
+      Move-Item -LiteralPath $tempPath -Destination $installedPath -Force
+      $launch=New-Object System.Diagnostics.ProcessStartInfo;$launch.FileName=(Join-Path $PSHOME 'powershell.exe');$launch.Arguments='-NoProfile -ExecutionPolicy Bypass -File "'+$installedPath+'"';$launch.UseShellExecute=$false;[System.Diagnostics.Process]::Start($launch)|Out-Null;$form.Close()
+    }
+  }catch{[void][System.Windows.Forms.MessageBox]::Show("Fish Tank couldn't load or restore versions:`r`n$($_.Exception.Message)",'Fish Tank versions',[System.Windows.Forms.MessageBoxButtons]::OK,[System.Windows.Forms.MessageBoxIcon]::Error)}
+  finally{$restoreVersionItem.Enabled=$true}
+})
 $updateItem.Add_Click({
   $updateItem.Enabled=$false
   $updateItem.Text='Checking for updates…'
@@ -338,6 +498,9 @@ $download=[System.Text.Encoding]::UTF8.GetString($downloadBytes).TrimStart([char
     $parseTokens=$null;$parseErrors=$null
     [System.Management.Automation.Language.Parser]::ParseFile($tempPath,[ref]$parseTokens,[ref]$parseErrors)|Out-Null
     if($parseErrors.Count -gt 0){Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue;throw 'The downloaded update did not pass the PowerShell syntax check.'}
+    $newVersionMatch=[regex]::Match($download,'(?m)^\s*\$script:FishTankVersion\s*=\s*''([^'']+)''')
+    if(-not $newVersionMatch.Success){Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue;throw 'The downloaded update has no version number.'}
+    $newVersion=$newVersionMatch.Groups[1].Value
         $sha=[System.Security.Cryptography.SHA256]::Create()
     try {
       $currentHash=[Convert]::ToBase64String($sha.ComputeHash([System.IO.File]::ReadAllBytes($installedPath)))
@@ -349,6 +512,8 @@ $download=[System.Text.Encoding]::UTF8.GetString($downloadBytes).TrimStart([char
       Copy-Item -LiteralPath $installedPath -Destination $backupPath -Force
       try { Move-Item -LiteralPath $tempPath -Destination $installedPath -Force }
       catch { Copy-Item -LiteralPath $backupPath -Destination $installedPath -Force;throw }
+      New-Item -ItemType Directory -Path $script:FishTankInstallFolder -Force | Out-Null
+      [System.IO.File]::WriteAllText($script:PendingWhatsNewPath,$newVersion,(New-Object System.Text.UTF8Encoding($false)))
       $launch=New-Object System.Diagnostics.ProcessStartInfo
       $launch.FileName=(Join-Path $PSHOME 'powershell.exe')
       $launch.Arguments='-NoProfile -ExecutionPolicy Bypass -File "'+$installedPath+'"'
@@ -442,42 +607,46 @@ $tank.Add_Paint({
     $glint=$drawResources.GlintBrush
     for($i=0;$i -lt 4;$i++) { $x=[single](($i*179+$state.Phase*4)%[Math]::Max(1,$w)); $y=[single]($h-14-(($i*61)%[Math]::Max(1,$h-20))); $g.FillEllipse($glint,$x,$y,2,2) }
   }
-  $fishFont=$drawResources.FishFont;$fishBrush=$drawResources.FishBrush;$hatBrush=$drawResources.HatBrush;$hatAccentBrush=$drawResources.HatAccentBrush
+  $fishFont=$drawResources.FishFont;$fishBrush=$drawResources.FishBrush;$hatBrush=$drawResources.HatBrush;$hatAccentBrush=$drawResources.HatAccentBrush;$hatOutlinePen=$drawResources.HatOutlinePen
   $partyBrushes=$drawResources.PartyBrushes;$angerFont=$drawResources.AngerFont;$angerBrush=$drawResources.AngerBrush;$blubFont=$drawResources.BlubFont;$blubBrush=$drawResources.BlubBrush
   for($fishIndex=0;$fishIndex -lt $state.FishCount;$fishIndex++){
     if($state.FishHidden){break}
     $fish=$fishies[$fishIndex];$fishInk=[System.Drawing.Color]::White
 
-    $fishText='<o))><';if($fish.Direction -gt 0){$fishText='><((o>'}
+    $fishGlyphSet=$drawResources.FishGlyphs[$fish.Style];if(-not $fishGlyphSet){$fishGlyphSet=$drawResources.FishGlyphs['Classic']};$fishGlyph=$fishGlyphSet.Left;if($fish.Direction -gt 0){$fishGlyph=$fishGlyphSet.Right}
     $cx=[single]($fish.X+43);$cy=[single]($fish.Y+14)
     $drawX=[single]($fish.X+18);$drawY=[single]($fish.Y+7)
     $g.TranslateTransform($cx,$cy)
-    $renderAngle=$fish.Angle; if($state.Tilt){$renderAngle=$fish.LookAngle}elseif($state.Follow -and -not ($fishIndex -eq 0 -and $state.PinnedCorner)){$renderAngle=0.0}; $g.RotateTransform([single]$renderAngle)
-    $g.TranslateTransform(-$cx,-$cy);$g.DrawString($fishText,$fishFont,$fishBrush,$drawX,$drawY);$g.ResetTransform()
+    $renderAngle=$fish.Angle; if($state.Tilt){$renderAngle=$fish.LookAngle}elseif($state.Follow -and -not ($fishIndex -eq 0 -and $state.PinnedCorner)){$renderAngle=0.0}; while($renderAngle -gt 180){$renderAngle-=360};while($renderAngle -lt -180){$renderAngle+=360}; if($renderAngle -gt 90){$renderAngle=180-$renderAngle};if($renderAngle -lt -90){$renderAngle=-180-$renderAngle}; $g.RotateTransform([single]$renderAngle)
+    $g.TranslateTransform(-$cx,-$cy);$g.DrawImage($fishGlyph,$drawX,$drawY);$g.ResetTransform()
     if($state.HatsEnabled){
       $g.TranslateTransform($cx,$cy)
-      $renderAngle=$fish.Angle; if($state.Tilt){$renderAngle=$fish.LookAngle}elseif($state.Follow -and -not ($fishIndex -eq 0 -and $state.PinnedCorner)){$renderAngle=0.0}; $g.RotateTransform([single]$renderAngle)
+      $renderAngle=$fish.Angle; if($state.Tilt){$renderAngle=$fish.LookAngle}elseif($state.Follow -and -not ($fishIndex -eq 0 -and $state.PinnedCorner)){$renderAngle=0.0}; while($renderAngle -gt 180){$renderAngle-=360};while($renderAngle -lt -180){$renderAngle+=360}; if($renderAngle -gt 90){$renderAngle=180-$renderAngle};if($renderAngle -lt -90){$renderAngle=-180-$renderAngle}; $g.RotateTransform([single]$renderAngle)
       switch($state.HatStyle){
         'Traffic cone' {
           $g.FillPolygon($hatBrush,[System.Drawing.PointF[]]@([System.Drawing.PointF]::new(-8,-8),[System.Drawing.PointF]::new(0,-27),[System.Drawing.PointF]::new(8,-8)))
+          $g.DrawPolygon($hatOutlinePen,[System.Drawing.PointF[]]@([System.Drawing.PointF]::new(-8,-8),[System.Drawing.PointF]::new(0,-27),[System.Drawing.PointF]::new(8,-8)))
           $g.FillPolygon($hatAccentBrush,[System.Drawing.PointF[]]@([System.Drawing.PointF]::new(-4,-16),[System.Drawing.PointF]::new(4,-16),[System.Drawing.PointF]::new(5,-13),[System.Drawing.PointF]::new(-5,-13)))
           $g.FillRectangle($hatBrush,-10,-9,20,3)
+          $g.DrawRectangle($hatOutlinePen,-10,-9,20,3)
         }
         'Top hat' {
-          $g.FillRectangle($hatBrush,-7,-23,14,14);$g.FillRectangle($hatBrush,-11,-10,22,3);$g.FillRectangle($hatAccentBrush,-7,-14,14,3)
+          $g.FillRectangle($hatBrush,-7,-23,14,14);$g.DrawRectangle($hatOutlinePen,-7,-23,14,14);$g.FillRectangle($hatBrush,-11,-10,22,3);$g.DrawRectangle($hatOutlinePen,-11,-10,22,3);$g.FillRectangle($hatAccentBrush,-7,-14,14,3)
         }
         'Beanie' {
-          $g.FillEllipse($hatBrush,-9,-22,18,15);$g.FillRectangle($hatBrush,-9,-12,18,4);$g.FillEllipse($hatAccentBrush,-2,-25,4,4)
+          $g.FillEllipse($hatBrush,-9,-22,18,15);$g.DrawEllipse($hatOutlinePen,-9,-22,18,15);$g.FillRectangle($hatBrush,-9,-12,18,4);$g.DrawRectangle($hatOutlinePen,-9,-12,18,4);$g.FillEllipse($hatAccentBrush,-2,-25,4,4);$g.DrawEllipse($hatOutlinePen,-2,-25,4,4)
         }
         'Crown' {
           $g.FillPolygon($hatBrush,[System.Drawing.PointF[]]@([System.Drawing.PointF]::new(-10,-9),[System.Drawing.PointF]::new(-8,-23),[System.Drawing.PointF]::new(-3,-17),[System.Drawing.PointF]::new(0,-27),[System.Drawing.PointF]::new(3,-17),[System.Drawing.PointF]::new(8,-23),[System.Drawing.PointF]::new(10,-9)))
-          $g.FillRectangle($hatBrush,-10,-10,20,3);$g.FillEllipse($hatAccentBrush,-2,-15,4,4)
+          $g.DrawPolygon($hatOutlinePen,[System.Drawing.PointF[]]@([System.Drawing.PointF]::new(-10,-9),[System.Drawing.PointF]::new(-8,-23),[System.Drawing.PointF]::new(-3,-17),[System.Drawing.PointF]::new(0,-27),[System.Drawing.PointF]::new(3,-17),[System.Drawing.PointF]::new(8,-23),[System.Drawing.PointF]::new(10,-9)))
+          $g.FillRectangle($hatBrush,-10,-10,20,3);$g.DrawRectangle($hatOutlinePen,-10,-10,20,3);$g.FillEllipse($hatAccentBrush,-2,-15,4,4);$g.DrawEllipse($hatOutlinePen,-2,-15,4,4)
         }
         'Cowboy hat' {
-          $g.FillEllipse($hatBrush,-15,-13,30,7);$g.FillEllipse($hatBrush,-8,-23,16,15);$g.FillRectangle($hatAccentBrush,-7,-13,14,2)
+          $g.FillEllipse($hatBrush,-15,-13,30,7);$g.DrawEllipse($hatOutlinePen,-15,-13,30,7);$g.FillEllipse($hatBrush,-8,-23,16,15);$g.DrawEllipse($hatOutlinePen,-8,-23,16,15);$g.FillRectangle($hatAccentBrush,-7,-13,14,2)
         }
         'Party hat' {
           $g.FillPolygon($hatBrush,[System.Drawing.PointF[]]@([System.Drawing.PointF]::new(-9,-9),[System.Drawing.PointF]::new(0,-28),[System.Drawing.PointF]::new(9,-9)))
+          $g.DrawPolygon($hatOutlinePen,[System.Drawing.PointF[]]@([System.Drawing.PointF]::new(-9,-9),[System.Drawing.PointF]::new(0,-28),[System.Drawing.PointF]::new(9,-9)))
           if(-not $state.HatColorCustom){
             $g.FillPolygon($partyBrushes[0],[System.Drawing.PointF[]]@([System.Drawing.PointF]::new(-2,-25),[System.Drawing.PointF]::new(2,-25),[System.Drawing.PointF]::new(3,-23),[System.Drawing.PointF]::new(-3,-23)))
             $g.FillPolygon($partyBrushes[1],[System.Drawing.PointF[]]@([System.Drawing.PointF]::new(-3,-22),[System.Drawing.PointF]::new(3,-22),[System.Drawing.PointF]::new(4,-20),[System.Drawing.PointF]::new(-4,-20)))
@@ -486,19 +655,20 @@ $tank.Add_Paint({
             $g.FillPolygon($partyBrushes[4],[System.Drawing.PointF[]]@([System.Drawing.PointF]::new(-6,-13),[System.Drawing.PointF]::new(6,-13),[System.Drawing.PointF]::new(8,-11),[System.Drawing.PointF]::new(-8,-11)))
             $g.FillPolygon($partyBrushes[5],[System.Drawing.PointF[]]@([System.Drawing.PointF]::new(-8,-10),[System.Drawing.PointF]::new(8,-10),[System.Drawing.PointF]::new(9,-8),[System.Drawing.PointF]::new(-9,-8)))
           }else{$g.FillPolygon($hatAccentBrush,[System.Drawing.PointF[]]@([System.Drawing.PointF]::new(-2,-19),[System.Drawing.PointF]::new(2,-19),[System.Drawing.PointF]::new(3,-15),[System.Drawing.PointF]::new(-3,-15)))}
-          $g.FillEllipse($hatAccentBrush,-2,-30,4,4);$g.FillRectangle($hatBrush,-10,-9,20,3)
+          $g.FillEllipse($hatAccentBrush,-2,-30,4,4);$g.DrawEllipse($hatOutlinePen,-2,-30,4,4);$g.FillRectangle($hatBrush,-10,-9,20,3);$g.DrawRectangle($hatOutlinePen,-10,-9,20,3)
         }
         'Dell logo' {
           & $script:refreshDellLogo
           $g.DrawImage($script:dellLogoBitmap,-11,-30,22,22)
+          $g.DrawEllipse($hatOutlinePen,-11,-30,22,22)
         }
       }
       $g.ResetTransform()
     }
-    if([datetime]::UtcNow -lt $fish.AngryUntil){$g.DrawString('!!',$angerFont,$angerBrush,[single]($fish.X+54),[single]($fish.Y-5))}
-    if([datetime]::UtcNow -lt $fish.BlubUntil){$g.DrawString('blub blub',$blubFont,$blubBrush,[single]($fish.X+20),[single]([Math]::Max(2,$fish.Y-19)))}
+    if([datetime]::UtcNow -lt $fish.AngryUntil){& $drawOutlinedText $g '!!' $angerFont $angerBrush ([single]($fish.X+54)) ([single]($fish.Y-5)) ([single]1.4)}
+    if([datetime]::UtcNow -lt $fish.BlubUntil){& $drawOutlinedText $g 'blub blub' $blubFont $blubBrush ([single]($fish.X+20)) ([single]([Math]::Max(2,$fish.Y-19))) ([single]1.2)}
   }
-  if($state.PongActive){$scoreFont=$drawResources.ScoreFont;$scoreBrush=$drawResources.ScoreBrush;$scoreText="PONG  $($state.PongScoreLeft) : $($state.PongScoreRight)";$scoreSize=$g.MeasureString($scoreText,$scoreFont);$g.DrawString($scoreText,$scoreFont,$scoreBrush,[single](($w-$scoreSize.Width)/2),[single]($h-$scoreSize.Height-5))}
+  if($state.PongActive){$scoreFont=$drawResources.ScoreFont;$scoreBrush=$drawResources.ScoreBrush;$scoreText="PONG  $($state.PongScoreLeft) : $($state.PongScoreRight)";$scoreSize=$g.MeasureString($scoreText,$scoreFont);& $drawOutlinedText $g $scoreText $scoreFont $scoreBrush ([single](($w-$scoreSize.Width)/2)) ([single]($h-$scoreSize.Height-5)) ([single]1.5)}
 })
 
 # The transparent canvas lets clicks pass through; the fish glyph itself remains draggable.
@@ -585,6 +755,7 @@ $tank.Add_MouseUp({
 })
 
 $timer.Add_Tick({
+  & $updateBackgroundOverlay
   $now=[datetime]::UtcNow;$stealJustFinished=$false
   if(($now-$state.LastRocketLeagueCheck).TotalSeconds -ge 1){
     $state.LastRocketLeagueCheck=$now;$rocketLeagueOpen=[bool](Get-Process -Name 'RocketLeague' -ErrorAction SilentlyContinue | Select-Object -First 1)
@@ -612,13 +783,13 @@ $timer.Add_Tick({
     $state.LastLoc=$loc;$state.WindowAt=$now
     if($now -ge $state.RocketLeagueOverrideUntil){$tank.Invalidate();return}
   }
-  if($state.AutoBreedEnabled -and -not $state.PongActive -and $state.FishCount -lt 500 -and $now -ge $state.NextBreed){
+  if($state.AutoBreedEnabled -and -not $state.PongActive -and $state.FishCount -lt 1000 -and $now -ge $state.NextBreed){
     $newFish=$fishies[$state.FishCount];$parent=$fishies[$rng.Next($state.FishCount)]
     $newFish.X=[Math]::Max(8,[Math]::Min($tank.ClientSize.Width-92,$parent.X+($rng.NextDouble()-0.5)*28))
     $newFish.Y=[Math]::Max(30,[Math]::Min($tank.ClientSize.Height-60,$parent.Y+($rng.NextDouble()-0.5)*28))
     $newFish.Heading=$parent.Heading;$newFish.Direction=$parent.Direction;$newFish.Angle=$parent.Angle;$newFish.TargetX=0;$newFish.TargetY=0;$newFish.Dragging=$false;$newFish.BlubUntil=[datetime]::MinValue;$newFish.AngryUntil=[datetime]::MinValue;$newFish.NextBlub=$now.AddSeconds($rng.Next(8,19))
     & $setFishCount ($state.FishCount+1)
-    if($state.FishCount -ge 500){$state.AutoBreedEnabled=$false;$breedItem.Checked=$false;$state.NextBreed=[datetime]::MaxValue}
+    if($state.FishCount -ge 1000){$state.AutoBreedEnabled=$false;$breedItem.Checked=$false;$state.NextBreed=[datetime]::MaxValue}
     else{$state.NextBreed=$now.AddSeconds($state.BreedInterval)}
   }
   if($state.KeepAwake -and ($now-$state.KeepAwakeRefresh).TotalSeconds -ge 30){& $applyKeepAwake}
@@ -655,10 +826,10 @@ $timer.Add_Tick({
     $state.Stealing=$false;$state.StealPhase='';$state.TypingSteal=$false;$state.Physics=$false;$stealJustFinished=$true
     if($state.TypingForcedFollow){$state.TypingForcedFollow=$false;$followItem.PerformClick()}
   }
-  $endDown=(([FishTankNative]::GetAsyncKeyState(0x23) -band 0x8000) -ne 0)
+  $endDown=($state.EndKeyVK -ne 0 -and (([FishTankNative]::GetAsyncKeyState([int]$state.EndKeyVK) -band 0x8000) -ne 0))
   if($endDown -and -not $state.EndWasDown -and -not $state.PongActive){& $startCursorSteal}
   $state.EndWasDown=$endDown
-  $insertDown=(([FishTankNative]::GetAsyncKeyState(0x2D) -band 0x8000) -ne 0)
+  $insertDown=($state.InsertKeyVK -ne 0 -and (([FishTankNative]::GetAsyncKeyState([int]$state.InsertKeyVK) -band 0x8000) -ne 0))
   if($insertDown -and -not $state.InsertWasDown){& $togglePong}
   $state.InsertWasDown=$insertDown
   $homeDown=(([FishTankNative]::GetAsyncKeyState(0x24) -band 0x8000) -ne 0)
@@ -668,8 +839,8 @@ $timer.Add_Tick({
     $tank.Invalidate()
   }
   $state.HomeWasDown=$homeDown
-  $pgUpDown=(([FishTankNative]::GetAsyncKeyState(0x21) -band 0x8000) -ne 0)
-  $pgDownDown=(([FishTankNative]::GetAsyncKeyState(0x22) -band 0x8000) -ne 0)
+  $pgUpDown=($state.PageUpKeyVK -ne 0 -and (([FishTankNative]::GetAsyncKeyState([int]$state.PageUpKeyVK) -band 0x8000) -ne 0))
+  $pgDownDown=($state.PageDownKeyVK -ne 0 -and (([FishTankNative]::GetAsyncKeyState([int]$state.PageDownKeyVK) -band 0x8000) -ne 0))
   if($pgUpDown){
     if(-not $state.PgUpWasDown){$state.PgUpStarted=$now;$state.PgUpLastAdjust=$now;& $setFishCount ($state.FishCount+1)}
     else{$heldMs=($now-$state.PgUpStarted).TotalMilliseconds;$repeatMs=if($heldMs -ge 1800){55}elseif($heldMs -ge 700){110}else{280};if(($now-$state.PgUpLastAdjust).TotalMilliseconds -ge $repeatMs){$state.PgUpLastAdjust=$now;& $setFishCount ($state.FishCount+1)}}
@@ -680,7 +851,7 @@ $timer.Add_Tick({
     else{$heldMs=($now-$state.PgDownStarted).TotalMilliseconds;$repeatMs=if($heldMs -ge 1800){55}elseif($heldMs -ge 700){110}else{280};if(($now-$state.PgDownLastAdjust).TotalMilliseconds -ge $repeatMs){$state.PgDownLastAdjust=$now;& $setFishCount ($state.FishCount-1)}}
   }
   $state.PgDownWasDown=$pgDownDown
-  $deleteDown=(([FishTankNative]::GetAsyncKeyState(0x2E) -band 0x8000) -ne 0)
+  $deleteDown=($state.DeleteKeyVK -ne 0 -and (([FishTankNative]::GetAsyncKeyState([int]$state.DeleteKeyVK) -band 0x8000) -ne 0))
   if($deleteDown -and -not $state.DeleteWasDown -and ($state.Stealing -or $state.PongActive)){
     if($state.PongActive){& $togglePong;$stealJustFinished=$true}
     else{$state.Stealing=$false;$state.StealPhase='';$state.PinnedCorner=$false;$state.TargetX=0;$state.TargetY=0;$state.Physics=$true;$state.VelX=[Math]::Cos($state.Heading)*680;$state.VelY=[Math]::Sin($state.Heading)*680;$state.AngryUntil=$now.AddSeconds(5);$stealJustFinished=$true}
@@ -834,22 +1005,24 @@ $timer.Add_Tick({
       if($state.Direction -lt 0){$state.Angle-=180}
     } else {
       # When the pointer rests, roam freely across the full desktop-sized surface.
-      $maxX=[Math]::Max(32,$tank.ClientSize.Width-105); $maxY=[Math]::Max(30,$tank.ClientSize.Height-48)
-      if($state.TargetX -le 0 -or [Math]::Sqrt([Math]::Pow($state.TargetX-$state.X,2)+[Math]::Pow($state.TargetY-$state.Y,2)) -lt 32){
+      $tightTank=($tank.ClientSize.Width -lt 450 -or $tank.ClientSize.Height -lt 320)
+      $maxX=[Math]::Max(32,$tank.ClientSize.Width-88); $maxY=[Math]::Max(30,$tank.ClientSize.Height-34)
+      $arrivalRadius=if($tightTank){14.0}else{32.0}
+      if($state.TargetX -le 0 -or [Math]::Sqrt([Math]::Pow($state.TargetX-$state.X,2)+[Math]::Pow($state.TargetY-$state.Y,2)) -lt $arrivalRadius){
         $state.TargetX=24+$rng.NextDouble()*[Math]::Max(1,$maxX-24)
-        $state.TargetY=24+$rng.NextDouble()*[Math]::Max(1,$maxY-24)
+        $state.TargetY=18+$rng.NextDouble()*[Math]::Max(1,$maxY-18)
       }
       $dx=$state.TargetX-$state.X; $dy=$state.TargetY-$state.Y
       $desired=[Math]::Atan2($dy,$dx)
       $delta=[Math]::Atan2([Math]::Sin($desired-$state.Heading),[Math]::Cos($desired-$state.Heading))
-      $state.Heading += [Math]::Max(-0.075,[Math]::Min(0.075,$delta))
+      if($tightTank){$state.Heading=$desired}else{$state.Heading += [Math]::Max(-0.075,[Math]::Min(0.075,$delta))}
       $roamSpeed=if([datetime]::UtcNow -lt $state.AngryUntil){6.8}else{3.2}
       $state.X += [Math]::Cos($state.Heading)*$roamSpeed
       $state.Y += [Math]::Sin($state.Heading)*$roamSpeed
-      if($state.X -lt 18){$state.X=18;$state.TargetX=$maxX;$state.TargetY=24+$rng.Next([Math]::Max(1,[int]($maxY-24)))}
-      elseif($state.X -gt $maxX){$state.X=$maxX;$state.TargetX=18;$state.TargetY=24+$rng.Next([Math]::Max(1,[int]($maxY-24)))}
+      if($state.X -lt 18){$state.X=18;$state.TargetX=$maxX;$state.TargetY=18+$rng.Next([Math]::Max(1,[int]($maxY-18)))}
+      elseif($state.X -gt $maxX){$state.X=$maxX;$state.TargetX=18;$state.TargetY=18+$rng.Next([Math]::Max(1,[int]($maxY-18)))}
       if($state.Y -lt 18){$state.Y=18;$state.TargetY=$maxY;$state.TargetX=24+$rng.Next([Math]::Max(1,[int]($maxX-24)))}
-      elseif($state.Y -gt $maxY){$state.Y=$maxY;$state.TargetY=24;$state.TargetX=24+$rng.Next([Math]::Max(1,[int]($maxX-24)))}
+      elseif($state.Y -gt $maxY){$state.Y=$maxY;$state.TargetY=18;$state.TargetX=24+$rng.Next([Math]::Max(1,[int]($maxX-24)))}
       $vx=[Math]::Cos($state.Heading); $vy=[Math]::Sin($state.Heading)
       $state.Direction=if($vx -lt 0){-1}else{1}
       $state.Angle=[Math]::Atan2($vy,$vx)*180/[Math]::PI
@@ -937,12 +1110,13 @@ $timer.Add_Tick({
   }
   for($angryIndex=1;$angryIndex -lt $state.FishCount;$angryIndex++){if($state.AngryUntil -gt $fishies[$angryIndex].AngryUntil){$fishies[$angryIndex].AngryUntil=$state.AngryUntil}}
   for($i=1;$i -lt $state.FishCount;$i++){$f=$fishies[$i];$twentyFishCursorChase=($state.Follow -and $state.FishCount -eq 20 -and ([datetime]::UtcNow-$state.CursorStillSince).TotalMilliseconds -le 500);if($state.Follow -and $state.FishCount -eq 20){if($twentyFishCursorChase){$followOrigin=$tank.PointToScreen([System.Drawing.Point]::Empty);$followCursor=[System.Windows.Forms.Cursor]::Position;$f.TargetX=$followCursor.X-$followOrigin.X-43+(($i%5)-2)*18;$f.TargetY=$followCursor.Y-$followOrigin.Y-14+([Math]::Floor($i/5)-1.5)*22}else{$f.TargetX=0;$f.TargetY=0}};if(-not $state.PongActive -and -not $f.Dragging){
-    $maxX=[Math]::Max(32,$tank.ClientSize.Width-105);$maxY=[Math]::Max(30,$tank.ClientSize.Height-48)
-    if(-not $twentyFishCursorChase -and ($f.TargetX -le 0 -or [Math]::Sqrt([Math]::Pow($f.TargetX-$f.X,2)+[Math]::Pow($f.TargetY-$f.Y,2)) -lt 32)){& $pickFishTarget $f}
+    $tightTank=($tank.ClientSize.Width -lt 450 -or $tank.ClientSize.Height -lt 320);$maxX=[Math]::Max(32,$tank.ClientSize.Width-88);$maxY=[Math]::Max(30,$tank.ClientSize.Height-34)
+    $arrivalRadius=if($tightTank){14.0}else{32.0}
+    if(-not $twentyFishCursorChase -and ($f.TargetX -le 0 -or [Math]::Sqrt([Math]::Pow($f.TargetX-$f.X,2)+[Math]::Pow($f.TargetY-$f.Y,2)) -lt $arrivalRadius)){& $pickFishTarget $f}
     $dx=$f.TargetX-$f.X;$dy=$f.TargetY-$f.Y;$desired=[Math]::Atan2($dy,$dx);$delta=[Math]::Atan2([Math]::Sin($desired-$f.Heading),[Math]::Cos($desired-$f.Heading))
-    $f.Heading += [Math]::Max(-0.07,[Math]::Min(0.07,$delta));$followSpeed=if([datetime]::UtcNow -lt $f.AngryUntil){$f.Speed*2.4}else{$f.Speed};if($twentyFishCursorChase -and [Math]::Sqrt($dx*$dx+$dy*$dy) -lt 12){$followSpeed=0.0};$f.X += [Math]::Cos($f.Heading)*$followSpeed;$f.Y += [Math]::Sin($f.Heading)*$followSpeed
-    $f.X=[Math]::Max(5,[Math]::Min($tank.ClientSize.Width-92,$f.X));$f.Y=[Math]::Max(30,[Math]::Min($tank.ClientSize.Height-60,$f.Y))
-    if($f.X -le 5 -or $f.X -ge $tank.ClientSize.Width-92 -or $f.Y -le 30 -or $f.Y -ge $tank.ClientSize.Height-60){& $pickFishTarget $f}
+    if($tightTank){$f.Heading=$desired}else{$f.Heading += [Math]::Max(-0.07,[Math]::Min(0.07,$delta))};$followSpeed=if([datetime]::UtcNow -lt $f.AngryUntil){$f.Speed*2.4}else{$f.Speed};if($twentyFishCursorChase -and [Math]::Sqrt($dx*$dx+$dy*$dy) -lt 12){$followSpeed=0.0};$f.X += [Math]::Cos($f.Heading)*$followSpeed;$f.Y += [Math]::Sin($f.Heading)*$followSpeed
+    $f.X=[Math]::Max(5,[Math]::Min($tank.ClientSize.Width-82,$f.X));$f.Y=[Math]::Max(18,[Math]::Min($tank.ClientSize.Height-34,$f.Y))
+    if($f.X -le 5 -or $f.X -ge $tank.ClientSize.Width-82 -or $f.Y -le 18 -or $f.Y -ge $tank.ClientSize.Height-34){& $pickFishTarget $f}
     $f.Direction=if([Math]::Cos($f.Heading) -lt 0){-1}else{1};$f.Angle=[Math]::Atan2([Math]::Sin($f.Heading),[Math]::Cos($f.Heading))*180/[Math]::PI
     if($f.Direction -lt 0){$f.Angle-=180};if($f.Angle -gt 180){$f.Angle-=360};if($f.Angle -lt -180){$f.Angle+=360}
   }}
@@ -957,7 +1131,8 @@ $timer.Add_Tick({
         $cursorHeading=[Math]::Atan2($lookDy,$lookDx)*180/[Math]::PI
         $glyphHeading=if($tiltFish.Direction -gt 0){0.0}else{180.0}
         $tiltFish.LookAngle=$cursorHeading-$glyphHeading
-        if($tiltFish.LookAngle -gt 180){$tiltFish.LookAngle-=360};if($tiltFish.LookAngle -lt -180){$tiltFish.LookAngle+=360}
+        while($tiltFish.LookAngle -gt 180){$tiltFish.LookAngle-=360};while($tiltFish.LookAngle -lt -180){$tiltFish.LookAngle+=360}
+        if($tiltFish.LookAngle -gt 90){$tiltFish.LookAngle=180-$tiltFish.LookAngle};if($tiltFish.LookAngle -lt -90){$tiltFish.LookAngle=-180-$tiltFish.LookAngle}
       }
     }
   }
@@ -974,6 +1149,9 @@ $form.Add_Shown({
   & $pickRoamTarget
   foreach($f in $fishies[1..3]){$f.X=[Math]::Max(18,[Math]::Min($tank.ClientSize.Width-105,$f.X));$f.Y=[Math]::Max(18,[Math]::Min($tank.ClientSize.Height-48,$f.Y));& $pickFishTarget $f}
   $timer.Start()
+  if(Test-Path -LiteralPath $script:PendingWhatsNewPath){$pendingVersion=Get-Content -LiteralPath $script:PendingWhatsNewPath -Raw -ErrorAction SilentlyContinue;Remove-Item -LiteralPath $script:PendingWhatsNewPath -Force -ErrorAction SilentlyContinue;if($pendingVersion.Trim() -eq $script:FishTankVersion){$form.BeginInvoke([Action]{& $showWhatsNew})|Out-Null}}
 })
-$form.Add_FormClosed({ [FishTankNative]::SetThreadExecutionState([uint32]2147483648) | Out-Null;$timer.Stop();$timer.Dispose();$tray.Visible=$false;$tray.Dispose();$menu.Dispose();$colorDialog.Dispose();$hatColorDialog.Dispose();$blubPlayer.Stop();$blubPlayer.Dispose();$blubStream.Dispose();$writer.Dispose();$wav.Dispose();$screenSampleGraphics.Dispose();$screenSampleBitmap.Dispose();if($script:dellLogoBitmap){$script:dellLogoBitmap.Dispose()};if($script:drawResources){$script:drawResources.FishFont.Dispose();$script:drawResources.FishBrush.Dispose();$script:drawResources.HatBrush.Dispose();$script:drawResources.HatAccentBrush.Dispose();foreach($b in $script:drawResources.PartyBrushes){$b.Dispose()};$script:drawResources.AngerFont.Dispose();$script:drawResources.AngerBrush.Dispose();$script:drawResources.BlubFont.Dispose();$script:drawResources.BlubBrush.Dispose();$script:drawResources.BubblePen.Dispose();$script:drawResources.GlintBrush.Dispose();$script:drawResources.ScoreFont.Dispose();$script:drawResources.ScoreBrush.Dispose()} })
+$form.Add_FormClosed({ [FishTankNative]::SetThreadExecutionState([uint32]2147483648) | Out-Null;$timer.Stop();$timer.Dispose();$tray.Visible=$false;$tray.Dispose();$menu.Dispose();$colorDialog.Dispose();$hatColorDialog.Dispose();$backgroundOverlay.Close();$backgroundOverlay.Dispose();$blubPlayer.Stop();$blubPlayer.Dispose();$blubStream.Dispose();$writer.Dispose();$wav.Dispose();$screenSampleGraphics.Dispose();$screenSampleBitmap.Dispose();if($script:dellLogoBitmap){$script:dellLogoBitmap.Dispose()};if($script:drawResources){$script:drawResources.FishFont.Dispose();$script:drawResources.FishBrush.Dispose();$script:drawResources.FishOutlineBrush.Dispose();foreach($glyphSet in $script:drawResources.FishGlyphs.Values){$glyphSet.Left.Dispose();$glyphSet.Right.Dispose()};$script:drawResources.HatOutlinePen.Dispose();$script:drawResources.TextOutlineBrush.Dispose();$script:drawResources.HatBrush.Dispose();$script:drawResources.HatAccentBrush.Dispose();foreach($b in $script:drawResources.PartyBrushes){$b.Dispose()};$script:drawResources.AngerFont.Dispose();$script:drawResources.AngerBrush.Dispose();$script:drawResources.BlubFont.Dispose();$script:drawResources.BlubBrush.Dispose();$script:drawResources.BubblePen.Dispose();$script:drawResources.GlintBrush.Dispose();$script:drawResources.ScoreFont.Dispose();$script:drawResources.ScoreBrush.Dispose()} })
 [void]$form.ShowDialog()
+
+

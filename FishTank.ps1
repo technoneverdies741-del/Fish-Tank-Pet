@@ -26,7 +26,7 @@ public static class FishTankNative {
 '@
 Add-Type -TypeDefinition $native
 [FishTankNative]::HideConsole()
-$script:FishTankVersion='20'
+$script:FishTankVersion='21'
 $script:FishTankInstallFolder=Join-Path $env:LOCALAPPDATA 'FishTankPet'
 $script:PendingWhatsNewPath=Join-Path $script:FishTankInstallFolder 'whats-new.pending'
 $script:FishTankReleaseNotes=@(
@@ -34,7 +34,8 @@ $script:FishTankReleaseNotes=@(
   'Fish, hats, and labels have thicker dark outlines for clear contrast.',
   'Fish swim across compact tanks instead of looping in place.',
   'Choose a different glyph style for each fish.',
-  'Map Pong, cursor mischief, and fish-count controls to keys your keyboard has.'
+  'Map Pong, cursor mischief, and fish-count controls to keys your keyboard has.',
+  'The new-stuff page also appears after updating from older app versions.'
 )
 $script:FishStyleChoices=@(
   [pscustomobject]@{Name='Classic';Left='<o))><';Right='><((o>'},
@@ -1149,7 +1150,10 @@ $form.Add_Shown({
   & $pickRoamTarget
   foreach($f in $fishies[1..3]){$f.X=[Math]::Max(18,[Math]::Min($tank.ClientSize.Width-105,$f.X));$f.Y=[Math]::Max(18,[Math]::Min($tank.ClientSize.Height-48,$f.Y));& $pickFishTarget $f}
   $timer.Start()
-  if(Test-Path -LiteralPath $script:PendingWhatsNewPath){$pendingVersion=Get-Content -LiteralPath $script:PendingWhatsNewPath -Raw -ErrorAction SilentlyContinue;Remove-Item -LiteralPath $script:PendingWhatsNewPath -Force -ErrorAction SilentlyContinue;if($pendingVersion.Trim() -eq $script:FishTankVersion){$form.BeginInvoke([Action]{& $showWhatsNew})|Out-Null}}
+  $showReleaseNotes=$false
+  if(Test-Path -LiteralPath $script:PendingWhatsNewPath){$pendingVersion=Get-Content -LiteralPath $script:PendingWhatsNewPath -Raw -ErrorAction SilentlyContinue;Remove-Item -LiteralPath $script:PendingWhatsNewPath -Force -ErrorAction SilentlyContinue;if($pendingVersion.Trim() -eq $script:FishTankVersion){$showReleaseNotes=$true}}
+  if(-not $showReleaseNotes){$previousScriptPath=(Join-Path $script:FishTankInstallFolder 'FishTank.ps1.previous');$seenVersionPath=(Join-Path $script:FishTankInstallFolder 'whats-new.seen');$hasSeenCurrent=(Test-Path -LiteralPath $seenVersionPath) -and ((Get-Content -LiteralPath $seenVersionPath -Raw -ErrorAction SilentlyContinue).Trim() -eq $script:FishTankVersion);if((Test-Path -LiteralPath $previousScriptPath) -and -not $hasSeenCurrent){$previousSource=Get-Content -LiteralPath $previousScriptPath -Raw -ErrorAction SilentlyContinue;$previousVersionMatch=[regex]::Match($previousSource,'(?m)^\s*\$script:FishTankVersion\s*=\s*''([^'']+)''');$previousVersion=if($previousVersionMatch.Success){$previousVersionMatch.Groups[1].Value}else{'0'};if([int]$previousVersion -lt [int]$script:FishTankVersion){$showReleaseNotes=$true}}}
+  if($showReleaseNotes){New-Item -ItemType Directory -Path $script:FishTankInstallFolder -Force|Out-Null;[System.IO.File]::WriteAllText((Join-Path $script:FishTankInstallFolder 'whats-new.seen'),$script:FishTankVersion,(New-Object System.Text.UTF8Encoding($false)));$form.BeginInvoke([Action]{& $showWhatsNew})|Out-Null}
 })
 $form.Add_FormClosed({ [FishTankNative]::SetThreadExecutionState([uint32]2147483648) | Out-Null;$timer.Stop();$timer.Dispose();$tray.Visible=$false;$tray.Dispose();$menu.Dispose();$colorDialog.Dispose();$hatColorDialog.Dispose();$backgroundOverlay.Close();$backgroundOverlay.Dispose();$blubPlayer.Stop();$blubPlayer.Dispose();$blubStream.Dispose();$writer.Dispose();$wav.Dispose();$screenSampleGraphics.Dispose();$screenSampleBitmap.Dispose();if($script:dellLogoBitmap){$script:dellLogoBitmap.Dispose()};if($script:drawResources){$script:drawResources.FishFont.Dispose();$script:drawResources.FishBrush.Dispose();$script:drawResources.FishOutlineBrush.Dispose();foreach($glyphSet in $script:drawResources.FishGlyphs.Values){$glyphSet.Left.Dispose();$glyphSet.Right.Dispose()};$script:drawResources.HatOutlinePen.Dispose();$script:drawResources.TextOutlineBrush.Dispose();$script:drawResources.HatBrush.Dispose();$script:drawResources.HatAccentBrush.Dispose();foreach($b in $script:drawResources.PartyBrushes){$b.Dispose()};$script:drawResources.AngerFont.Dispose();$script:drawResources.AngerBrush.Dispose();$script:drawResources.BlubFont.Dispose();$script:drawResources.BlubBrush.Dispose();$script:drawResources.BubblePen.Dispose();$script:drawResources.GlintBrush.Dispose();$script:drawResources.ScoreFont.Dispose();$script:drawResources.ScoreBrush.Dispose()} })
 [void]$form.ShowDialog()

@@ -26,7 +26,7 @@ public static class FishTankNative {
 '@
 Add-Type -TypeDefinition $native
 [FishTankNative]::HideConsole()
-$script:FishTankVersion='22'
+$script:FishTankVersion='23'
 $script:FishTankInstallFolder=Join-Path $env:LOCALAPPDATA 'FishTankPet'
 $script:PendingWhatsNewPath=Join-Path $script:FishTankInstallFolder 'whats-new.pending'
 $script:FishTankReleaseNotes=@(
@@ -36,7 +36,8 @@ $script:FishTankReleaseNotes=@(
   'Choose a different glyph style for each fish.',
   'Map Pong, cursor mischief, and fish-count controls to keys your keyboard has.',
   'The new-stuff page also appears after updating from older app versions.',
-  'The restore picker now loads every saved source revision from v1 through v21.'
+  'The restore picker now loads every saved source revision from v1 through v22.',
+  'Keyboard shortcut choices populate correctly in the settings panel.'
 )
 $script:FishStyleChoices=@(
   [pscustomobject]@{Name='Classic';Left='<o))><';Right='><((o>'},
@@ -384,10 +385,12 @@ $fishStylesItem.Add_Click({
   $styleDialog.Dispose()
 })
 $script:HotkeyCodes=@{'None'=0;'Insert'=0x2D;'Delete'=0x2E;'End'=0x23;'Page Up'=0x21;'Page Down'=0x22;'Home'=0x24;'Space'=0x20;'Tab'=0x09;'Escape'=0x1B}
-foreach($letterCode in 'A'..'Z'){$script:HotkeyCodes[$letterCode]=[int][char]$letterCode}
+foreach($letterCodePoint in 65..90){$letterCode=[string][char]$letterCodePoint;$script:HotkeyCodes[$letterCode]=$letterCodePoint}
 foreach($digitCode in 0..9){$script:HotkeyCodes[[string]$digitCode]=0x30+$digitCode}
 foreach($functionIndex in 1..12){$script:HotkeyCodes["F$functionIndex"]=0x6F+$functionIndex}
-$script:HotkeyChoiceNames=@('None','Insert','Delete','End','Page Up','Page Down','Home','Space','Tab','Escape')+@('F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12')+@('A'..'Z')+@('0'..'9')
+$script:HotkeyLetters=@(foreach($letterCodePoint in 65..90){[string][char]$letterCodePoint})
+$script:HotkeyDigits=@(foreach($digitValue in 0..9){[string]$digitValue})
+$script:HotkeyChoiceNames=@('None','Insert','Delete','End','Page Up','Page Down','Home','Space','Tab','Escape')+@('F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12')+$script:HotkeyLetters+$script:HotkeyDigits
 $keyboardShortcutsItem=New-Object System.Windows.Forms.ToolStripMenuItem('Keyboard shortcuts…')
 $keyboardShortcutsItem.Add_Click({
   $shortcutDialog=New-Object System.Windows.Forms.Form;$shortcutDialog.Text='Keyboard shortcuts';$shortcutDialog.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::FixedDialog;$shortcutDialog.StartPosition=[System.Windows.Forms.FormStartPosition]::CenterParent;$shortcutDialog.ClientSize=New-Object System.Drawing.Size(360,244);$shortcutDialog.MaximizeBox=$false;$shortcutDialog.MinimizeBox=$false;$shortcutDialog.ShowInTaskbar=$false
